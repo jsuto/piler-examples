@@ -43,3 +43,11 @@ then restart nginx
 nginx -t
 nginx -s reload
 ```
+
+## Final notes
+
+Traefik obtains you an A-grade https certificate, and automatically renews it before it expires.
+
+The traefik config yaml file uses TLS v1.3. If necessary you may lower the minVersion to your needs.
+
+Optionally visit [https://www.ssllabs.com/ssltest/](https://www.ssllabs.com/ssltest/) to verify it.
