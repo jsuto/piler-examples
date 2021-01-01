@@ -1,0 +1,46 @@
+log:
+  level: INFO
+
+entryPoints:
+  web:
+    address: "1.2.3.4:80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+providers:
+  file:
+    filename: "/usr/local/etc/traefik/traefik.yaml"
+
+certificatesResolvers:
+  le:
+    acme:
+      storage: "/usr/local/etc/traefik/acme.json"
+      email: admin@yourdomain.com
+      httpChallenge:
+        entryPoint: web
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS13
+
+http:
+  routers:
+    piler:
+      rule: "Host(`archive.yourdomain.com`)"
+      service: piler
+      tls:
+        certResolver: le
+
+  services:
+    piler:
+      loadBalancer:
+        servers:
+        - url: "http://127.0.0.1:80/"
+

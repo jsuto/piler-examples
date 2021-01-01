@@ -1,1 +1,1 @@
-# piler-ee
+# Examples of piler configurations
