@@ -21,10 +21,10 @@ Be sure to fix your IP-address and domain name in /usr/local/etc/traefik/traefik
 
 #### Setup systemd service for traefik
 
-``cp traefik.service /etc/systemd/system
-systemctl daemon-reload
-systemctl enable traefik
-systemctl start traefik``
+``cp traefik.service /etc/systemd/system``
+``systemctl daemon-reload``
+``systemctl enable traefik``
+``systemctl start traefik``
 
 See [https://doc.traefik.io/traefik/getting-started/install-traefik/]https://doc.traefik.io/traefik/getting-started/install-traefik/) for the detailed installation procedure.
 
@@ -33,6 +33,5 @@ See [https://doc.traefik.io/traefik/getting-started/install-traefik/]https://doc
 Set the listen address and port to 127.0.0.1:80 in /etc/piler/piler-nginx.conf
 then restart nginx
 
-``nginx -t
-nginx -s reload``
-
+``nginx -t``
+``nginx -s reload``
