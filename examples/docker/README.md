@@ -45,6 +45,25 @@ Fix following values:
 * MULTITENANCY
 
 
+If you preferred external volumes rather than docker-compose managed volumes,
+then fix the volumes section at the end:
+
+```
+...
+
+volumes:
+  db_data:
+    external: true
+    name: db-data
+  piler_etc:
+    external: true
+    name: piler-etc
+  piler_var:
+    external: true
+    name: piler-var
+```
+
+
 ## Execute
 
 docker-compose up -d
