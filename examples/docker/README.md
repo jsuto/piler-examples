@@ -1,8 +1,25 @@
 # Deploying piler enterprise to docker with docker-compose
 
+## The layout
+
+This setup features the following containers:
+
+* traefik: http and https entry point
+* mariadb: storing metadata, user db, etc.
+* memcached: to cache some data
+* Apache tika: to extract textual attachment data
+* Piler enterprise 1.5.0: the email archive running piler and sphinxsearch
+
+Port mappings to containers:
+
+- traefik: 80/tcp, 443/tcp
+- piler: 25/tcp
+
+No other port should be visible from the outside.
+
 ## Prerequisites
 
-* Get the license file
+* Get the license file to run piler enterprise
 
 ## Setup
 
@@ -13,11 +30,21 @@ Customize docker-compose.yaml, and fix the following values:
 * PILER_HOSTNAME
 * MULTITENANCY
 
-Check out with-external-volumes.yaml if you don't want docker-compose
-to handle the used docker volumes.
+The with-external-volumes.yaml provides an example how to use
+not docker-compose managed docker volumes.
 
-Feel free to customize other settings in docker-compose.yaml as well.
+Edit traefik.yaml and set your email and the archive hostname.
+
+The acme.json file must be owned by root:root and have 0600 permissions:
+
+```
+chown root:root acme.json
+```
 
 ## Execute
 
 docker-compose up -d
+
+## Final words
+
+You just got a https enabled piler deployment in a containerized environment.

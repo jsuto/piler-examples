@@ -1,0 +1,59 @@
+log:
+  level: INFO
+
+api:
+  insecure: true
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+providers:
+  file:
+    filename: "/etc/traefik/traefik.yaml"
+
+certificatesResolvers:
+  le:
+    acme:
+      storage: "/etc/traefik/acme.json"
+      email: admin@yourdomain.com
+      httpChallenge:
+        entryPoint: web
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS13
+
+http:
+  middlewares:
+    piler_headers:
+      headers:
+        customResponseHeaders:
+          Server: ""
+          Strict-Transport-Security: "max-age=31536000"
+
+  routers:
+    piler:
+      rule: "Host(`archive.yourdomain.com`)"
+      service: piler
+      middlewares:
+        - "piler_headers"
+      tls:
+        certResolver: le
+
+  services:
+    piler:
+      loadBalancer:
+        servers:
+        - url: "http://piler/"
+
