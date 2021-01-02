@@ -66,7 +66,9 @@ volumes:
 
 ## Execute
 
+```
 docker-compose up -d
+```
 
 ## Final words
 
