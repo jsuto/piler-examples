@@ -23,23 +23,27 @@ No other port should be visible from the outside.
 
 ## Setup
 
-Customize docker-compose.yaml, and fix the following values:
+### Customize traefik.yaml
+
+Edit traefik.yaml and replace admin@yourdomain.com and archive.yourdomain.com
+with your email and archive hostname.
+
+The acme.json file must be owned by root:root and have 0600 permissions:
+
+```
+chmod 600 acme.json
+chown root:root acme.json
+```
+
+### Customize docker-compose.yaml
+
+Fix following values:
 
 * MYSQL_PILER_PASSWORD
 * MYSQL_ROOT_PASSWORD
 * PILER_HOSTNAME
 * MULTITENANCY
 
-The with-external-volumes.yaml provides an example how to use
-not docker-compose managed docker volumes.
-
-Edit traefik.yaml and set your email and the archive hostname.
-
-The acme.json file must be owned by root:root and have 0600 permissions:
-
-```
-chown root:root acme.json
-```
 
 ## Execute
 
