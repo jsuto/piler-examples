@@ -49,11 +49,11 @@ services:
     environment:
       - MYSQL_PILER_PASSWORD=piler123
       - MYSQL_ROOT_PASSWORD=abcde123
-      - MYSQL_HOST=mysql
-      - TIKA_HOST=tika
+      - MYSQL_HOSTNAME=mysql
+      - TIKA_HOSTNAME=tika
       - PILER_HOSTNAME=archive.yourdomain.com
       - MULTITENANCY=0
-      - MEMCACHED_HOST=memcached
+      - MEMCACHED_HOSTNAME=memcached
       - NODE_TYPE=WORKER
     ports:
       - "25:25"
