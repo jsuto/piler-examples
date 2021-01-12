@@ -36,8 +36,8 @@ See [https://doc.traefik.io/traefik/getting-started/install-traefik/](https://do
 
 ## Fix nginx to listen on 127.0.0.1:80
 
-Set the listen address and port to 127.0.0.1:80 in /etc/piler/piler-nginx.conf
-then restart nginx
+Set the listen address and port to 127.0.0.1:80 in /etc/piler/piler-nginx.conf,
+and fix the log format in nginx.conf to get the real IP-addresses, then restart nginx
 
 ```
 nginx -t
