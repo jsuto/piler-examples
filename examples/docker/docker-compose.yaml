@@ -11,7 +11,7 @@ services:
       - ./acme.json:/etc/traefik/acme.json
 
   mysql:
-    image: mariadb:10.4
+    image: mariadb:10.5
     restart: unless-stopped
     cap_drop:
       - ALL
@@ -20,7 +20,11 @@ services:
       - setuid
       - setgid
     environment:
-      - MYSQL_ROOT_PASSWORD=abcde123
+      - MYSQL_DATABASE=piler
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
+      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
       - db_data:/var/lib/mysql
 
@@ -44,12 +48,13 @@ services:
     command: -m 64
 
   piler:
-    image: sutoj/piler-ee:1.5.0
+    image: sutoj/piler-ee:test
     init: true
     environment:
-      - MYSQL_PILER_PASSWORD=piler123
-      - MYSQL_ROOT_PASSWORD=abcde123
       - MYSQL_HOSTNAME=mysql
+      - MYSQL_DATABASE=piler
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
       - TIKA_HOSTNAME=tika
       - PILER_HOSTNAME=archive.yourdomain.com
       - MULTITENANCY=0
