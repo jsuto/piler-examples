@@ -23,7 +23,7 @@ No other port should be visible from the outside.
 
 ## Prerequisites
 
-* You have a working [https://zentyal.com/](Zentyal) deployment with mail support
+* You have a working [Zentyal](https://zentyal.com/) deployment with mail support
 
 ## Install docker components
 
