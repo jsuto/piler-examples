@@ -125,3 +125,5 @@ Click on "Configure rules", and add a service and a rule to allow incoming reque
 ## Final words
 
 You just got a piler deployment in a containerized environment on Zentyal.
+Note that these settings are good enough to get going, however feel free
+to customize the archive, eg. add HTTPS support, etc.
