@@ -1,0 +1,5 @@
+#!/bin/sh
+
+postmap /etc/postfix/transport.piler
+
+exit 0
