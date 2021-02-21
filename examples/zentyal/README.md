@@ -1,11 +1,11 @@
-# Deploying piler enterprise to zentyal using docker-compose
+# Deploying piler to Zentyal using docker-compose
 
 ## The goal
 
 We are going to install piler in a dockerized environment.
-The GUI will authenticate users using the LDAP server running
-on Zentyal. Postfix will send a copy of each received email
-to the archive.
+The GUI will authenticate users using the LDAP server (ie.
+Samba) running on Zentyal. Postfix will send a copy of each
+received email to the archive.
 
 ## The layout
 
@@ -27,13 +27,15 @@ No other port should be visible from the outside.
 
 ## Install docker components
 
+```
 apt-get install -y docker-compose docker.io
+```
 
 ## Setup
 
 ### Customize docker-compose.yaml
 
-Fix following values:
+Fix the following values:
 
 * MYSQL_PILER_PASSWORD
 * PILER_HOSTNAME
@@ -58,7 +60,7 @@ volumes:
 ```
 
 
-## Execute
+## Start the containers
 
 ```
 docker-compose up -d
@@ -67,7 +69,9 @@ docker-compose up -d
 
 ### Create a transport map for piler
 
+```
 echo "archive.yourdomain.com:   smtp:[127.0.0.1]:2525" > /etc/postfix/transport.piler
+```
 
 ## Create piler related changes to the system
 
