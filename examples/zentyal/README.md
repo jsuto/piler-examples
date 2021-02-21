@@ -23,7 +23,7 @@ No other port should be visible from the outside.
 
 ## Prerequisites
 
-* You have a Zentyal deployment with mail support
+* You have a working [https://zentyal.com/](Zentyal) deployment with mail support
 
 ## Install docker components
 
@@ -60,7 +60,7 @@ volumes:
 ```
 
 
-## Start the containers
+### Start the containers
 
 ```
 docker-compose up -d
@@ -73,7 +73,7 @@ docker-compose up -d
 echo "archive.yourdomain.com:   smtp:[127.0.0.1]:2525" > /etc/postfix/transport.piler
 ```
 
-## Create piler related changes to the system
+### Create piler related changes to the system
 
 ```
 cp /usr/share/zentyal/stubs/mail/main.cf.mas .
@@ -92,7 +92,7 @@ Click on the "Settings" gear icons for the domain you want to archive emails.
 Select "Address to sent the copy" from the dropdown menu, and type
 "archive@archive.yourdomain.com", then click "Change", and "Save changes".
 
-## Fix the piler GUI config
+### Fix the piler GUI config
 
 Read /etc/postfix/valiases.cf to get the LDAP bind user parameters, then
 add the following settings to /var/lib/docker/volumes/u1_piler_etc/_data/config-site.php:
@@ -117,7 +117,7 @@ $config['SITE_URL'] = 'http://' . $config[SITE_NAME_CONST] . ':8080/';
 ```
 
 
-## Add a firewall rule to allow users login to the GUI
+### Add a firewall rule to allow users login to the GUI
 
 Select "Firewall" menu, then "Packet filter", and "Filtering rules from internal networks to Zentyal".
 Click on "Configure rules", and add a service and a rule to allow incoming requests to port 8080.
