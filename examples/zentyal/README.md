@@ -70,7 +70,7 @@ docker-compose up -d
 ### Create a transport map for piler
 
 ```
-echo "archive.yourdomain.com:   smtp:[127.0.0.1]:2525" > /etc/postfix/transport.piler
+echo "archive.yourdomain.com   smtp:[127.0.0.1]:2525" > /etc/postfix/transport.piler
 ```
 
 ### Create piler related changes to the system
