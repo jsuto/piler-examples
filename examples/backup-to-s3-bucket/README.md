@@ -21,7 +21,7 @@ BUCKET_PREFIX="s3/your-bucket-prefix"
 
 ## Notes
 
-The script copies only the last 2 top level store folders (eg. /var/piler/store/00/piler/605) to S3 the bucket.
+The script copies only the last 2 top level store folders (eg. /var/piler/store/00/piler/605) to the S3 bucket.
 For the first use be sure to fix the store level dir in the 125th line to make sure all store data is copied.
 
 ```
