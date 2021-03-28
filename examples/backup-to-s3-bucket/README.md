@@ -9,7 +9,7 @@ How to backup piler enterprise data to an S3 bucket
 Fix the BUCKET_PREFIX variable in backup-to-s3.sh script, eg.
 
 ```
-### Make sure, your bucket prefix is unique especially using a cloud provider
+### Make sure, your bucket prefix is unique especially when using a cloud provider
 BUCKET_PREFIX="s3/your-bucket-prefix"
 ```
 
@@ -21,11 +21,13 @@ BUCKET_PREFIX="s3/your-bucket-prefix"
 
 ## Notes
 
-The script copies only the last 2 top level store folders (eg. /var/piler/store/00/piler/605) to S3 bucket
-For the first usage be sure to fix the store level dir in the 125th line to make sure all store data is copied.
+The script copies only the last 2 top level store folders (eg. /var/piler/store/00/piler/605) to S3 the bucket.
+For the first use be sure to fix the store level dir in the 125th line to make sure all store data is copied.
 
 ```
 backup_customer_dir "$customer" "$STORE_DIR" "store" 200
 ```
 
 After the first run, you may revert it to "2", because older directories don't change.
+
+The backup script appends the customer name to the prefix, eg. s3/company-name-piler-backup-${customer}
