@@ -1,5 +1,14 @@
 How to backup piler enterprise data to an S3 bucket
 
+The below script uploads the raw piler data files (both emails and attachments), and the mysql and sphinx databases.
+
+Pros:
+* Once you have everything restored you have a fully functional archive
+* No need for a time consuming reindex process
+
+Cons:
+* You need to upload the attachments data every time
+
 ## Prerequisites
 
 * Have an S3 compatible object store either in the cloud or using minio on premise
