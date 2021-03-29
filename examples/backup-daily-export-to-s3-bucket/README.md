@@ -37,5 +37,6 @@ BUCKET_PREFIX="s3/your-bucket-prefix"
 
 ## Notes
 
-The backup script appends the customer name to the prefix, eg. s3/company-name-piler-backup-${customer}
+The backup script appends the customer name to the prefix, eg. s3/company-name-piler-backup-${customer}.
+
 Be sure to backup the encryption key, otherwise your backup is as good as gone.
