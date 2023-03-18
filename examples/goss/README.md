@@ -12,5 +12,5 @@ chmod +x /usr/local/bin/goss
 ## Run goss to validate your server's setup
 
 ```
-goss --vars /etc/piler/vars.yaml validate
+goss --vars /etc/piler/vars.yaml -g /etc/piler/goss.yaml validate
 ```
