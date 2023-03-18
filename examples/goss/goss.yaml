@@ -1,0 +1,129 @@
+file:
+{{- range mkSlice "/usr/bin/pileraget" "/usr/bin/pilerexport" "/usr/bin/pilerget" "/usr/bin/pilerimport" "/usr/bin/pilertest"}}
+  {{.}}:
+    exists: true
+    mode: "6755"
+    owner: piler
+    group: piler
+    filetype: file
+    contains: []
+{{end}}
+{{- range mkSlice "/usr/sbin/piler" "/usr/sbin/piler-smtp"}}
+  {{.}}:
+    exists: true
+    mode: "0755"
+    owner: root
+    group: root
+    filetype: file
+    contains: []
+{{end}}
+  /var/piler:
+    exists: true
+    mode: "0755"
+    size: 4096
+    owner: root
+    group: root
+    filetype: directory
+    contains: []
+{{- range mkSlice "/var/piler/astore" "/var/piler/store" "/var/piler/tmp"}}
+  {{.}}:
+    exists: true
+    mode: "0700"
+    owner: piler
+    group: piler
+    filetype: directory
+    contains: []
+{{end}}
+  /etc/piler/config-site.php:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+    filetype: file
+    contains: []
+  /etc/piler/piler.conf:
+    exists: true
+    mode: "0600"
+    owner: piler
+    group: piler
+    filetype: file
+    contains: []
+  /etc/piler/piler.key:
+    exists: true
+    mode: "0640"
+    size: 56
+    owner: root
+    group: piler
+    filetype: file
+    contains: []
+  /etc/piler/piler.lic:
+    exists: true
+    mode: "0644"
+    owner: root
+    group: root
+    filetype: file
+    contains: []
+  /etc/piler/piler.pem:
+    exists: true
+    mode: "0640"
+    owner: root
+    group: piler
+    filetype: file
+    contains: []
+
+package:
+{{- range mkSlice "manticore" "mariadb-server" "nginx" "php8.1-fpm" "piler-ee"}}
+  {{.}}:
+    installed: true
+{{end}}
+port:
+  tcp:25:
+    listening: true
+    ip:
+    - 0.0.0.0
+{{- range mkSlice "tcp:3306" "tcp:9306" "tcp:11211"}}
+  {{.}}:
+    listening: true
+    ip:
+    - 127.0.0.1
+{{end}}
+{{if eq .Vars.multinodes 1}}
+  {{if eq .Vars.nodetype "WORKER"}}
+  tcp:9312:
+    listening: true
+    ip:
+    - 0.0.0.0
+  {{end}}
+{{end}}
+service:
+{{- range mkSlice "mariadb" "memcached" "nginx" "php8.1-fpm" "piler" "piler-smtp" "pilersearch"}}
+  {{.}}:
+    enabled: true
+    running: true
+{{end}}
+user:
+  piler:
+    exists: true
+    groups:
+    - piler
+    home: /var/piler
+    shell: /bin/bash
+group:
+  piler:
+    exists: true
+process:
+{{- range mkSlice "piler" "piler-smtp" "searchd"}}
+  {{.}}:
+    running: true
+{{end}}
+http:
+  http://localhost:9998/tika:
+    status: 200
+    allow-insecure: false
+    no-follow-redirects: false
+    timeout: 5000
+    body: []
+dns:
+  {{.Vars.pilerhost}}:
+    resolvable: true
+    timeout: 5000
