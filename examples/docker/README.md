@@ -12,7 +12,7 @@ This setup features the following containers:
 
 Port mappings to containers:
 
-- traefik: 80/tcp, 443/tcp
+- traefik: 443/tcp
 - piler: 25/tcp
 
 No other port should be visible from the outside.
@@ -73,3 +73,8 @@ docker-compose up -d
 ## Final words
 
 You just got a https enabled piler deployment in a containerized environment.
+
+## Piler open source edition
+
+If you want piler open source edition in a dockerized environment, then
+check out the [piler source directory](https://bitbucket.org/jsuto/piler/src/master/docker/).
