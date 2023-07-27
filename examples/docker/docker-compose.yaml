@@ -2,16 +2,17 @@ version: "3"
 services:
   traefik:
     image: traefik
+    container_name: traefik
     restart: unless-stopped
     ports:
-      - "80:80"
       - "443:443"
     volumes:
       - ./traefik.yaml:/etc/traefik/traefik.yaml:ro
       - ./acme.json:/etc/traefik/acme.json
 
   mysql:
-    image: mariadb:10.5
+    image: mariadb:10.9.7
+    container_name: mysql
     restart: unless-stopped
     cap_drop:
       - ALL
@@ -30,6 +31,7 @@ services:
 
   tika:
     image: sutoj/tika
+    container_name: tika
     restart: unless-stopped
     cap_drop:
       - ALL
@@ -42,6 +44,7 @@ services:
 
   memcached:
     image: memcached:latest
+    container_name: memcached
     restart: unless-stopped
     cap_drop:
       - ALL
@@ -49,6 +52,7 @@ services:
 
   piler:
     image: sutoj/piler-ee:test
+    container_name: piler
     init: true
     environment:
       - MYSQL_HOSTNAME=mysql

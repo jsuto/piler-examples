@@ -7,14 +7,6 @@ api:
 
 entryPoints:
   web:
-    address: ":80"
-    http:
-      redirections:
-        entryPoint:
-          to: websecure
-          scheme: https
-          permanent: true
-  websecure:
     address: ":443"
 
 providers:
@@ -26,8 +18,7 @@ certificatesResolvers:
     acme:
       storage: "/etc/traefik/acme.json"
       email: admin@yourdomain.com
-      httpChallenge:
-        entryPoint: web
+      tlsChallenge: {}
 
 tls:
   options:
