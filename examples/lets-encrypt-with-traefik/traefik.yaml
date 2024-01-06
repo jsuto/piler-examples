@@ -2,16 +2,8 @@ log:
   level: INFO
 
 entryPoints:
-  web:
-    address: "1.2.3.4:80"
-    http:
-      redirections:
-        entryPoint:
-          to: websecure
-          scheme: https
-          permanent: true
   websecure:
-    address: ":443"
+    address: "1.2.3.4:443"
 
 providers:
   file:
@@ -21,9 +13,8 @@ certificatesResolvers:
   le:
     acme:
       storage: "/usr/local/etc/traefik/acme.json"
-      email: admin@yourdomain.com
-      httpChallenge:
-        entryPoint: web
+      email: admin@example.com
+      tlsChallenge: {}
 
 tls:
   options:
@@ -31,16 +22,24 @@ tls:
       minVersion: VersionTLS13
 
 http:
+  middlewares:
+    piler_headers:
+      headers:
+        customResponseHeaders:
+          Server: ""
+          Strict-Transport-Security: "max-age=31536000"
+          X-Content-Type-Optionsi: "nosniff"
+          Referrer-Policy: "same-origin"
   routers:
     piler:
-      rule: "Host(`archive.yourdomain.com`)"
+      rule: "Host(`archive.example.com`)"
       service: piler
+      middlewares:
+        - "piler_headers"
       tls:
         certResolver: le
-
   services:
     piler:
       loadBalancer:
         servers:
         - url: "http://127.0.0.1:80/"
-
