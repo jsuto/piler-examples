@@ -5,8 +5,8 @@
 #### Setup the traefik binary
 
 ```bash
-wget https://github.com/traefik/traefik/releases/download/v2.3.6/traefik_v2.3.6_linux_amd64.tar.gz
-tar zxvf traefik_v2.3.6_linux_amd64.tar.gz
+wget https://github.com/traefik/traefik/releases/download/v2.10.7/traefik_v2.10.7_linux_amd64.tar.gz
+tar zxvf traefik_v2.10.7_linux_amd64.tar.gz
 cp traefik /usr/local/bin
 setcap cap_net_bind_service+ep /usr/local/bin/traefik
 ```
