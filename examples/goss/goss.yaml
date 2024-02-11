@@ -81,7 +81,7 @@ port:
     listening: true
     ip:
     - 0.0.0.0
-{{- range mkSlice "tcp:3306" "tcp:9306" "tcp:11211"}}
+{{- range mkSlice "tcp:3306" "tcp:9306" "tcp:9307"}}
   {{.}}:
     listening: true
     ip:
@@ -117,13 +117,24 @@ process:
     running: true
 {{end}}
 http:
-  http://localhost:9998/tika:
+  {{.Vars.tika_url}}:
     status: 200
     allow-insecure: false
     no-follow-redirects: false
     timeout: 5000
     body: []
+ {{.Vars.piler_url}}:
+    status: 200
+    allow-insecure: true
+    no-follow-redirects: false
+    timeout: 5000
+    body: []
+
 dns:
-  {{.Vars.pilerhost}}:
+  {{.Vars.piler_host}}:
     resolvable: true
     timeout: 5000
+addr:
+  tcp://{{.Vars.memcached_host}}:11211:
+    reachable: true
+    timeout: 500
