@@ -1,0 +1,56 @@
+log:
+  level: INFO
+
+api:
+  insecure: true
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  file:
+    filename: "/etc/traefik/traefik.yaml"
+
+experimental:
+  plugins:
+    traefik-modsecurity-plugin:
+      moduleName: github.com/acouvreur/traefik-modsecurity-plugin
+      version: v1.3.0
+
+http:
+  middlewares:
+    waf:
+      plugin:
+        traefik-modsecurity-plugin:
+          modSecurityUrl: http://waf:8080
+          maxBodySize: 10485760
+
+  routers:
+    dummy:
+      rule: "Host(`dummy`)"
+      service: dummy
+    website:
+      rule: "Host(`website`)"
+      service: website
+      middlewares:
+      - waf
+
+    waf:
+      rule: "Host(`waf`)"
+      service: waf
+
+  services:
+    dummy:
+      loadBalancer:
+        servers:
+        - url: "http://dummy/"
+    website:
+      loadBalancer:
+        servers:
+        - url: "http://website/"
+    waf:
+      loadBalancer:
+        servers:
+        - url: "http://waf:8080/"

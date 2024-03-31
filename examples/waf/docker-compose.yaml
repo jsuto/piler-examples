@@ -1,0 +1,26 @@
+services:
+  traefik:
+    image: traefik
+    container_name: traefik
+    ports:
+      - "8000:80"
+      - "8080:8080"
+    volumes:
+      - ./traefik.yaml:/etc/traefik/traefik.yaml:ro
+
+  waf:
+    image: owasp/modsecurity-crs:nginx-alpine
+    container_name: waf
+    environment:
+      - PARANOIA=2
+      - ANOMALY_INBOUND=10
+      - ANOMALY_OUTBOUND=5
+      - BACKEND=http://dummy
+
+  website:
+    image: sutoj/nginx:0.6
+    container_name: website
+
+  dummy:
+    image: traefik/whoami
+    container_name: dummy

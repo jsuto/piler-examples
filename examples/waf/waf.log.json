@@ -1,0 +1,175 @@
+{
+  "transaction": {
+    "client_ip": "172.25.0.3",
+    "time_stamp": "Sun Mar 31 07:08:42 2024",
+    "server_id": "45ddceecbeaa00d3a1be955adda022c4c3f9a9e9",
+    "client_port": 36054,
+    "host_ip": "172.25.0.5",
+    "host_port": 8080,
+    "unique_id": "171186892262.040691",
+    "request": {
+      "method": "GET",
+      "http_version": 1.1,
+      "uri": "/?waf=<script>alert(0)</script>",
+      "headers": {
+        "Host": "waf:8080",
+        "User-Agent": "curl/7.81.0",
+        "Accept": "*/*",
+        "X-Forwarded-Host": "website",
+        "X-Forwarded-Port": "80",
+        "X-Forwarded-Proto": "http",
+        "X-Forwarded-Server": "38b578184633",
+        "X-Real-Ip": "172.25.0.1",
+        "Accept-Encoding": "gzip"
+      }
+    },
+    "response": {
+      "body": "<html>\r\n<head><title>403 Forbidden</title></head>\r\n<body>\r\n<center><h1>403 Forbidden</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n",
+      "http_code": 403,
+      "headers": {
+        "Server": "nginx",
+        "Date": "Sun, 31 Mar 2024 07:08:42 GMT",
+        "Content-Length": "146",
+        "Content-Type": "text/html",
+        "Connection": "keep-alive"
+      }
+    },
+    "producer": {
+      "modsecurity": "ModSecurity v3.0.12 (Linux)",
+      "connector": "ModSecurity-nginx v1.0.3",
+      "secrules_engine": "Enabled",
+      "components": [
+        "OWASP_CRS/4.0.0\""
+      ]
+    },
+    "messages": [
+      {
+        "message": "XSS Attack Detected via libinjection",
+        "details": {
+          "match": "detected XSS using libinjection.",
+          "reference": "v10,25t:utf8toUnicode,t:urlDecodeUni,t:htmlEntityDecode,t:jsDecode,t:cssDecode,t:removeNulls",
+          "ruleId": "941100",
+          "file": "/etc/modsecurity.d/owasp-crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf",
+          "lineNumber": "80",
+          "data": "Matched Data: XSS data found within ARGS:waf: <script>alert(0)</script>",
+          "severity": "2",
+          "ver": "OWASP_CRS/4.0.0",
+          "rev": "",
+          "tags": [
+            "modsecurity",
+            "application-multi",
+            "language-multi",
+            "platform-multi",
+            "attack-xss",
+            "xss-perf-disable",
+            "paranoia-level/1",
+            "OWASP_CRS",
+            "capec/1000/152/242"
+          ],
+          "maturity": "0",
+          "accuracy": "0"
+        }
+      },
+      {
+        "message": "XSS Filter - Category 1: Script Tag Vector",
+        "details": {
+          "match": "Matched \"Operator `Rx' with parameter `(?i)<script[^>]*>[\\s\\S]*?' against variable `ARGS:waf' (Value: `<script>alert(0)</script>' )",
+          "reference": "o0,8v10,25t:utf8toUnicode,t:urlDecodeUni,t:htmlEntityDecode,t:jsDecode,t:cssDecode,t:removeNulls",
+          "ruleId": "941110",
+          "file": "/etc/modsecurity.d/owasp-crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf",
+          "lineNumber": "106",
+          "data": "Matched Data: <script> found within ARGS:waf: <script>alert(0)</script>",
+          "severity": "2",
+          "ver": "OWASP_CRS/4.0.0",
+          "rev": "",
+          "tags": [
+            "modsecurity",
+            "application-multi",
+            "language-multi",
+            "platform-multi",
+            "attack-xss",
+            "xss-perf-disable",
+            "paranoia-level/1",
+            "OWASP_CRS",
+            "capec/1000/152/242"
+          ],
+          "maturity": "0",
+          "accuracy": "0"
+        }
+      },
+      {
+        "message": "NoScript XSS InjectionChecker: HTML Injection",
+        "details": {
+          "match": "Matched \"Operator `Rx' with parameter `(?i)<[^0-9<>A-Z_a-z]*(?:[^\\s\\v\\\"'<>]*:)?[^0-9<>A-Z_a-z]*[^0-9A-Z_a-z]*?(?:s[^0-9A-Z_a-z]*?(?:c[^0-9A-Z_a-z]*?r[^0-9A-Z_a-z]*?i[^0-9A-Z_a-z]*?p[^0-9A-Z_a-z]*?t|t[^0-9A-Z_a-z]*?y[^0-9A-Z_a-z]*?l[^0-9A-Z (4336 characters omitted)' against variable `ARGS:waf' (Value: `<script>alert(0)</script>' )",
+          "reference": "o0,7v10,25t:utf8toUnicode,t:urlDecodeUni,t:htmlEntityDecode,t:jsDecode,t:cssDecode,t:removeNulls",
+          "ruleId": "941160",
+          "file": "/etc/modsecurity.d/owasp-crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf",
+          "lineNumber": "198",
+          "data": "Matched Data: <script found within ARGS:waf: <script>alert(0)</script>",
+          "severity": "2",
+          "ver": "OWASP_CRS/4.0.0",
+          "rev": "",
+          "tags": [
+            "modsecurity",
+            "application-multi",
+            "language-multi",
+            "platform-multi",
+            "attack-xss",
+            "xss-perf-disable",
+            "paranoia-level/1",
+            "OWASP_CRS",
+            "capec/1000/152/242"
+          ],
+          "maturity": "0",
+          "accuracy": "0"
+        }
+      },
+      {
+        "message": "Javascript method detected",
+        "details": {
+          "match": "Matched \"Operator `Rx' with parameter `(?i)\\b(?:eval|set(?:timeout|interval)|new[\\s\\v]+Function|a(?:lert|tob)|btoa|prompt|confirm)[\\s\\v]*\\(' against variable `ARGS:waf' (Value: `<script>alert(0)</script>' )",
+          "reference": "o8,6v10,25t:htmlEntityDecode,t:jsDecode",
+          "ruleId": "941390",
+          "file": "/etc/modsecurity.d/owasp-crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf",
+          "lineNumber": "712",
+          "data": "Matched Data: alert( found within ARGS:waf: <script>alert(0)</script>",
+          "severity": "2",
+          "ver": "OWASP_CRS/4.0.0",
+          "rev": "",
+          "tags": [
+            "modsecurity",
+            "application-multi",
+            "language-multi",
+            "attack-xss",
+            "xss-perf-disable",
+            "paranoia-level/1",
+            "OWASP_CRS",
+            "capec/1000/152/242"
+          ],
+          "maturity": "0",
+          "accuracy": "0"
+        }
+      },
+      {
+        "message": "Inbound Anomaly Score Exceeded (Total Score: 20)",
+        "details": {
+          "match": "Matched \"Operator `Ge' with parameter `10' against variable `TX:BLOCKING_INBOUND_ANOMALY_SCORE' (Value: `20' )",
+          "reference": "",
+          "ruleId": "949110",
+          "file": "/etc/modsecurity.d/owasp-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf",
+          "lineNumber": "176",
+          "data": "",
+          "severity": "0",
+          "ver": "OWASP_CRS/4.0.0",
+          "rev": "",
+          "tags": [
+            "modsecurity",
+            "anomaly-evaluation"
+          ],
+          "maturity": "0",
+          "accuracy": "0"
+        }
+      }
+    ]
+  }
+}
