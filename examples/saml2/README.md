@@ -23,3 +23,17 @@ Put the output to $settings['sp']['x509cert']
 
 Copy the certificate value from https://keycloak.example.com/realms/example-realm/protocol/saml/descriptor
 and put it to $settings['idp']['x509cert']
+
+## Copy saml2.php to /etc/piler
+
+```
+cp saml2.php /etc/piler
+```
+
+## Enable SAML 2 authentication
+
+Set the following to /etc/piler/config-site.php:
+
+```
+$config['ENABLE_SAML2'] = 1;
+```
