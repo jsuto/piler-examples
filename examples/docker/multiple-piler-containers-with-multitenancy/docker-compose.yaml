@@ -1,0 +1,231 @@
+x-big-containers: &big-containers
+  networks:
+    - piler
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+
+x-mysql-containers: &mysql-containers
+  image: mariadb:11.1.2
+  networks:
+    - piler
+  cap_drop:
+    - ALL
+  cap_add:
+    - dac_override
+    - setuid
+    - setgid
+  deploy:
+    resources:
+      limits:
+        memory: 256M
+  environment:
+    - MYSQL_ROOT_PASSWORD=abcde123
+    - MYSQL_DATABASE=aaaaa
+    - MYSQL_USER=piler
+    - MYSQL_PASSWORD=piler123
+  command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+x-manticore-contains: &manticore-containers
+  image: manticoresearch/manticore:6.3.6
+  networks:
+    - piler
+
+x-small-containers: &small-containers
+  networks:
+    - piler
+  deploy:
+    resources:
+      limits:
+        memory: 64M
+
+x-master-containers: &master-containers
+  image: sutoj/piler-ee:1.8.4
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+  volumes:
+    - ./11-piler.conf:/etc/rsyslog.d/11-piler.conf:ro
+  healthcheck:
+    test: ["CMD", "curl", "-s", "http://localhost"]
+    interval: 20s
+    timeout: 3s
+    retries: 3
+    start_period: 10s
+
+x-worker-containers: &worker-containers
+  image: sutoj/piler-ee:1.8.4
+  networks:
+    - piler
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+  healthcheck:
+    test: ["CMD", "curl", "-s", "smtp://localhost"]
+    interval: 20s
+    timeout: 3s
+    retries: 3
+    start_period: 10s
+
+services:
+  syslog:
+    image: sutoj/syslog
+    container_name: syslog.host
+    volumes:
+      - syslog:/var/log
+    <<: *small-containers
+
+  mysql-gui:
+    container_name: mysql-gui
+    <<: *mysql-containers
+
+  mysql-worker0:
+    container_name: mysql-worker0
+    <<: *mysql-containers
+
+  mysql-worker1:
+    container_name: mysql-worker1
+    <<: *mysql-containers
+
+  manticore-gui:
+    container_name: manticore-gui
+    volumes:
+      - ./manticore.conf:/etc/manticoresearch/manticore.conf
+    <<: *manticore-containers
+
+  manticore-worker0:
+    container_name: manticore-worker0
+    volumes:
+      - ./manticore-worker.conf:/etc/manticoresearch/manticore.conf
+    <<: *manticore-containers
+
+  manticore-worker1:
+    container_name: manticore-worker1
+    volumes:
+      - ./manticore-worker.conf:/etc/manticoresearch/manticore.conf
+    <<: *manticore-containers
+
+  archive.example.com:
+    <<: *master-containers
+    container_name: archive.example.com
+    hostname: archive.example.com
+    networks:
+      - piler
+    environment:
+      - PILER_HOSTNAME=archive.example.com
+      - NODE_TYPE=MASTER
+      - PRIMARY_MASTER=1
+      - MULTINODES=1
+      - MULTITENANCY=1
+      - SERVER_ID=0
+      - MYSQL_HOSTNAME=mysql-gui
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
+      - MYSQL_ROOT_PASSWORD=abcde123
+      - MEMCACHED_HOSTNAME=memcached
+      - MANTICORE_HOST=manticore-gui
+      - ENCRYPTED_SQL=1
+      - DYNAMIC_INDEX=1
+      - RT=1
+      - WORKERS=worker0,worker1
+      - MANTICORE_WORKERS=manticore-worker0,manticore-worker1
+      - AUTH_CODE=0Yh2hW1NDT9yDp6R7BAp8JmYhkBGI2PLIRUuoUEXWcM7c2L
+    ports:
+      - "80:80"
+    depends_on:
+      - syslog
+      - memcached
+      - tika
+      - worker0
+      - worker1
+      - mysql-gui
+      - manticore-gui
+
+  worker0:
+    <<: *worker-containers
+    container_name: worker0
+    hostname: worker0
+    environment:
+      - PILER_HOSTNAME=worker0
+      - MASTER_NODE=archive.example.com
+      - MULTINODES=1
+      - MULTITENANCY=1
+      - SERVER_ID=0
+      - MYSQL_HOSTNAME=mysql-worker0
+      - MASTER_MYSQL_NODE=mysql-gui
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
+      - MYSQL_ROOT_PASSWORD=abcde123
+      - MEMCACHED_HOSTNAME=memcached
+      - MANTICORE_HOST=manticore-worker0
+      - ENCRYPTED_SQL=0
+      - DYNAMIC_INDEX=1
+      - RT=1
+      - AUTH_CODE=0Yh2hW1NDT9yDp6R7BAp8JmYhkBGI2PLIRUuoUEXWcM7c2L
+    volumes:
+      - ./11-piler.conf:/etc/rsyslog.d/11-piler.conf:ro
+      - ./worker0.lic:/etc/piler/piler.lic:ro
+    ports:
+      - "2520:25"
+    depends_on:
+      - mysql-worker0
+      - manticore-worker0
+
+  worker1:
+    <<: *worker-containers
+    container_name: worker1
+    hostname: worker1
+    environment:
+      - PILER_HOSTNAME=worker1
+      - MASTER_NODE=archive.example.com
+      - MULTINODES=1
+      - MULTITENANCY=1
+      - SERVER_ID=1
+      - MYSQL_HOSTNAME=mysql-worker1
+      - MASTER_MYSQL_NODE=mysql-gui
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
+      - MYSQL_ROOT_PASSWORD=abcde123
+      - MEMCACHED_HOSTNAME=memcached
+      - MANTICORE_HOST=manticore-worker1
+      - ENCRYPTED_SQL=0
+      - DYNAMIC_INDEX=1
+      - RT=1
+      - AUTH_CODE=0Yh2hW1NDT9yDp6R7BAp8JmYhkBGI2PLIRUuoUEXWcM7c2L
+    volumes:
+      - ./11-piler.conf:/etc/rsyslog.d/11-piler.conf:ro
+      - ./worker1.lic:/etc/piler/piler.lic:ro
+    ports:
+      - "2521:25"
+    depends_on:
+      - mysql-worker1
+      - manticore-worker1
+
+  memcached:
+    image: memcached
+    container_name: memcached
+    command: -m 64
+    <<: *small-containers
+
+  tika:
+    image: apache/tika:2.9.2.0
+    container_name: tika
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    networks:
+      - piler
+    cap_drop:
+      - ALL
+
+networks:
+  piler:
+    name: piler
+
+volumes:
+  syslog:
+    name: "syslog"
