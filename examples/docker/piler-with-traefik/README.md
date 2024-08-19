@@ -8,7 +8,8 @@ This setup features the following containers:
 * mariadb: storing metadata, user db, etc.
 * memcached: to cache some data
 * Apache tika: to extract textual attachment data
-* Piler enterprise 1.5.0: the email archive running piler and sphinxsearch
+* Piler enterprise 1.8.4: the email archive running piler
+* Manticoresearch: the search engine
 
 Port mappings to containers:
 
@@ -58,16 +59,22 @@ volumes:
   piler_etc:
     external: true
     name: piler-etc
-  piler_var:
+  piler_mantiocore:
     external: true
-    name: piler-var
+    name: piler-manticore
+  piler_store:
+    external: true
+    name: piler-store
+  piler_astore:
+    external: true
+    name: piler-astore
 ```
 
 
 ## Execute
 
 ```
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Final words
@@ -77,4 +84,4 @@ You just got a https enabled piler deployment in a containerized environment.
 ## Piler open source edition
 
 If you want piler open source edition in a dockerized environment, then
-check out the [piler source directory](https://bitbucket.org/jsuto/piler/src/master/docker/).
+check out the [piler source directory](https://github.com/jsuto/piler/tree/master/docker).
