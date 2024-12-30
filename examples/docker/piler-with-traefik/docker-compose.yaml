@@ -10,7 +10,7 @@ services:
       - ./acme.json:/etc/traefik/acme.json
 
   mysql:
-    image: mariadb:11.1.2
+    image: mariadb:11.6.2
     container_name: mysql
     restart: unless-stopped
     cap_drop:
@@ -29,7 +29,7 @@ services:
       - db_data:/var/lib/mysql
 
   manticore:
-    image: manticoresearch/manticore:6.3.6
+    image: manticoresearch/manticore:6.3.8
     container_name: manticore
     restart: unless-stopped
     volumes:
@@ -37,7 +37,7 @@ services:
       - piler_manticore:/var/lib/manticore
 
   tika:
-    image: apache/tika:2.9.2.0
+    image: apache/tika:3.0.0.0
     container_name: tika
     restart: unless-stopped
     cap_drop:
@@ -93,9 +93,9 @@ services:
     deploy:
       resources:
         reservations:
-          memory: 512M
+          memory: 1024M
         limits:
-          memory: 512M
+          memory: 1024M
 
     depends_on:
       - "memcached"
