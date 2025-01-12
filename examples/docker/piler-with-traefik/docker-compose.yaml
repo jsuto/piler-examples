@@ -26,7 +26,7 @@ services:
       - MYSQL_ROOT_PASSWORD=abcde123
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
-      - db_data:/var/lib/mysql
+      - piler_db:/var/lib/mysql
 
   manticore:
     image: manticoresearch/manticore:6.3.8
@@ -103,7 +103,7 @@ services:
       - "tika"
 
 volumes:
-  db_data: {}
+  piler_db: {}
   piler_etc: {}
   piler_manticore: {}
   piler_store: {}
