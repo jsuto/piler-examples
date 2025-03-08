@@ -1,0 +1,144 @@
+x-small-containers: &small-containers
+  networks:
+    - piler
+  deploy:
+    resources:
+      limits:
+        memory: 64M
+
+x-big-containers: &big-containers
+  networks:
+    - piler
+  deploy:
+    resources:
+      limits:
+        memory: 1024M
+
+x-mysql-containers: &mysql-containers
+  image: mariadb:11.6.2
+  networks:
+    - piler
+  cap_drop:
+    - ALL
+  cap_add:
+    - dac_override
+    - setuid
+    - setgid
+  deploy:
+    resources:
+      limits:
+        memory: 1024M
+  environment:
+    - MYSQL_ROOT_PASSWORD=abcde123
+    - MYSQL_DATABASE=aaaaa
+    - MYSQL_USER=piler
+    - MYSQL_PASSWORD=piler123
+  volumes:
+    - ./encrypt:/etc/mysql/encrypt:ro
+    - ./99-encrypt.cnf:/etc/mysql/mariadb.conf.d/99-encrypt.cnf:ro
+    - piler_db:/var/lib/mysql
+  command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --plugin-load=file_key_management
+
+x-manticore-contains: &manticore-containers
+  image: manticoresearch/manticore:7.4.6
+  ports:
+    - "9312:9312"
+  networks:
+    - piler
+
+x-worker-containers: &worker-containers
+  image: sutoj/piler-ee:${VERSION:-1.8.4}
+  networks:
+    - piler
+  deploy:
+    resources:
+      limits:
+        memory: 1024M
+  healthcheck:
+    test: ["CMD", "curl", "-s", "smtp://localhost"]
+    interval: 20s
+    timeout: 3s
+    retries: 3
+    start_period: 10s
+
+services:
+  mysql-worker0:
+    container_name: mysql-worker0
+    <<: *mysql-containers
+
+  manticore-worker0:
+    container_name: manticore-worker0
+    volumes:
+      - ./manticore.conf:/etc/manticoresearch/manticore.conf
+      - piler_manticore:/var/lib/manticore
+    <<: *manticore-containers
+
+  piler-worker0:
+    <<: *worker-containers
+    hostname: piler-worker0
+    container_name: piler-worker0
+    environment:
+      - PILER_HOSTNAME=worker0.example.com
+      - MASTER_NODE=master.example.com
+      - MULTINODES=1
+      - MULTITENANCY=1
+      - SERVER_ID=0
+      - MYSQL_HOSTNAME=mysql-worker0
+      - MASTER_MYSQL_NODE=mysql-gui
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
+      - MYSQL_ROOT_PASSWORD=abcde123
+      - MEMCACHED_HOSTNAME=memcached
+      - MANTICORE_HOST=manticore-worker0
+      - ENCRYPTED_SQL=1
+      - DYNAMIC_INDEX=1
+      - RT=1
+      - AUTH_CODE=ki9b0hDh2bl93j3yYIEs4iESePjBEi7YLaApUaNdBmSYDdgtEDAsqZPXmXwmHM0dEXWmMu95lCcuFyKC6lE4l
+      - S3=${S3:-false}
+    volumes:
+      - ./worker0.example.com.lic:/etc/piler/piler.lic:ro
+      - ./piler.conf.worker0:/etc/piler/piler.conf
+      - ./11-piler.conf:/etc/rsyslog.d/11-piler.conf:ro
+      - piler_etc:/etc/piler
+      - piler_store:/var/piler/store
+      - piler_astore:/var/piler/astore
+    ports:
+      - "25:25"
+      - "80:80"
+    depends_on:
+      - mysql-worker0
+      - manticore-worker0
+
+  memcached:
+    image: memcached
+    container_name: memcached
+    command: -m 64
+    <<: *small-containers
+
+  tika:
+    image: apache/tika:3.0.0.0
+    container_name: tika
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    networks:
+      - piler
+    cap_drop:
+      - ALL
+
+volumes:
+  piler_astore:
+    external: true
+  piler_db:
+    external: true
+  piler_etc:
+    external: true
+  piler_manticore:
+    external: true
+  piler_store:
+    external: true
+
+networks:
+  piler:
+    name: piler

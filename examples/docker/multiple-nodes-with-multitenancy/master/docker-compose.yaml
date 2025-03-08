@@ -1,0 +1,114 @@
+x-small-containers: &small-containers
+  networks:
+    - piler
+  deploy:
+    resources:
+      limits:
+        memory: 64M
+
+x-mysql-containers: &mysql-containers
+  image: mariadb:11.6.2
+  networks:
+    - piler
+  cap_drop:
+    - ALL
+  cap_add:
+    - dac_override
+    - setuid
+    - setgid
+  deploy:
+    resources:
+      limits:
+        memory: 1024M
+  environment:
+    - MYSQL_ROOT_PASSWORD=abcde123
+    - MYSQL_DATABASE=aaaaa
+    - MYSQL_USER=piler
+    - MYSQL_PASSWORD=piler123
+  volumes:
+    - ./encrypt:/etc/mysql/encrypt:ro
+    - ./99-encrypt.cnf:/etc/mysql/mariadb.conf.d/99-encrypt.cnf:ro
+    - piler_db:/var/lib/mysql
+
+  command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --plugin-load=file_key_management
+  ports:
+    - "3306:3306"
+
+x-manticore-contains: &manticore-containers
+  image: manticoresearch/manticore:7.4.6
+  volumes:
+    - piler_manticore:/var/lib/manticore
+  networks:
+    - piler
+
+x-master-containers: &master-containers
+  image: sutoj/piler-ee:${VERSION:-1.8.4}
+  volumes:
+    - piler_etc:/etc/piler
+  networks:
+    - piler
+  deploy:
+    resources:
+      limits:
+        memory: 1024M
+
+services:
+  mysql-gui:
+    container_name: mysql-gui
+    <<: *mysql-containers
+
+  manticore-gui:
+    container_name: manticore-gui
+    volumes:
+      - ./manticore.conf:/etc/manticoresearch/manticore.conf
+    <<: *manticore-containers
+
+  piler-gui:
+    <<: *master-containers
+    hostname: piler-gui
+    container_name: piler-gui
+    environment:
+      - PILER_HOSTNAME=master.example.com
+      - NODE_TYPE=MASTER
+      - PRIMARY_MASTER=1
+      - MULTINODES=1
+      - MULTITENANCY=1
+      - SERVER_ID=0
+      - MYSQL_HOSTNAME=mysql-gui
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
+      - MYSQL_ROOT_PASSWORD=abcde123
+      - MEMCACHED_HOSTNAME=memcached
+      - MANTICORE_HOST=manticore-gui
+      - ENCRYPTED_SQL=1
+      - DYNAMIC_INDEX=1
+      - RT=1
+      - WORKERS=worker0.example.com
+      - MANTICORE_WORKERS=worker0.example.com
+      - AUTH_CODE=ki9b0hDh2bl93j3yYIEs4iESePjBEi7YLaApUaNdBmSYDdgtEDAsqZPXmXwmHM0dEXWmMu95lCcuFyKC6lE4l
+    volumes:
+      - ./11-piler.conf:/etc/rsyslog.d/11-piler.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - mysql-gui
+      - manticore-gui
+      - memcached
+
+  memcached:
+    image: memcached
+    container_name: memcached
+    command: -m 64
+    <<: *small-containers
+
+volumes:
+  piler_db:
+    external: true
+  piler_etc:
+    external: true
+  piler_manticore:
+    external: true
+
+networks:
+  piler:
+    name: piler
