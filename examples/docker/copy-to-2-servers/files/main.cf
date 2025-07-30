@@ -1,0 +1,25 @@
+smtpd_banner = $myhostname ESMTP
+biff = no
+
+compatibility_level = 3.6
+
+smtpd_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+smtpd_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+smtpd_tls_security_level=may
+
+smtp_tls_CApath=/etc/ssl/certs
+smtp_tls_security_level=may
+smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
+
+
+myhostname = smtpgw.piler
+alias_maps = hash:/etc/aliases
+alias_database = hash:/etc/aliases
+mynetworks = 127.0.0.0/8
+inet_protocols = ipv4
+
+smtpd_recipient_restrictions = check_recipient_access hash:/etc/postfix/domains, reject
+virtual_mailbox_domains = hash:/etc/postfix/domains
+virtual_alias_maps = pcre:${config_directory}/virtual
+virtual_mailbox_base = /var/mail
+message_size_limit = 20000000

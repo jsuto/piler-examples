@@ -1,0 +1,32 @@
+x-networks: &networks
+  networks:
+    - xxx
+
+services:
+  smtpgw:
+    image: smtpgw:latest
+    container_name: smtpgw
+    hostname: smtpgw
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    ports:
+      - "127.0.0.1:3535:25"
+    <<: *networks
+
+  worker101:
+    image: sutoj/smtp-sink
+    container_name: worker101
+    <<: *networks
+    command: smtp-sink -h worker101 -u nobody :25 10
+
+  worker201:
+    image: sutoj/smtp-sink
+    container_name: worker201
+    <<: *networks
+    command: smtp-sink -h worker201 -u nobody :25 10
+
+networks:
+  xxx:
+    name: xxx
