@@ -1,0 +1,26 @@
+LICENSE_FILE=/etc/piler/license.jwt
+
+LISTEN_ADDR=:3000
+
+MYSQL_USER=piler
+MYSQL_PASSWORD=piler123
+MYSQL_HOST=mysql:3306
+MYSQL_MAX_OPEN_CONN=30
+MYSQL_MAX_IDLE_CONN=10
+MYSQL_CONN_MAX_LIFETIME=300s
+
+MANTICORE_DSN=piler:piler123@tcp(manticore:9306)/?parseTime=true
+MANTICORE_READONLY_DSN=piler:piler123@tcp(manticore:9307)/?parseTime=true
+REDIS_ADDR=cache:6379
+HEADER_LINK=https://mailpiler.com/
+HEADER_LINK_TITLE=EXAMPLE archive
+
+LOG_LEVEL=DEBUG
+SMARTHOST=smarthost.example.com
+SMARTHOST_PORT=25
+NOREPLY_EMAIL=no-reply@archive.example.com
+
+ENABLE_DELETE=true
+NEED_TO_APPROVE_DELETE=false
+
+TIKA_URL=http://tika:9998/tika
