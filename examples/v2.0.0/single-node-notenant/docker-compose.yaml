@@ -111,7 +111,7 @@ services:
       - piler_stat:/var/piler/stat
       - piler_store:/var/piler/store:ro
       - piler_astore:/var/piler/astore:ro
-      - piler_etc:/etc/piler:ro
+      - piler_etc:/etc/piler
       - ./license.jwt:/etc/piler/license.jwt:ro
       - ./env:/app/.env
     ulimits:

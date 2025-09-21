@@ -12,7 +12,7 @@ MYSQL_CONN_MAX_LIFETIME=300s
 MANTICORE_DSN=piler:piler123@tcp(manticore:9306)/?parseTime=true
 MANTICORE_READONLY_DSN=piler:piler123@tcp(manticore:9307)/?parseTime=true
 REDIS_ADDR=cache:6379
-HEADER_LINK=https://mailpiler.com/
+HEADER_LINK=https://example.com/
 HEADER_LINK_TITLE=EXAMPLE archive
 
 LOG_LEVEL=DEBUG
