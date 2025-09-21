@@ -14,3 +14,11 @@ docker volume create piler_traefik
 ## Get the licenses for both the UI and the archive
 
 ## Customise files with your passwords, domain names
+
+Edit docker-compose.yaml, and perform any customisation you need.
+
+## Run the docker compose stack
+
+```
+docker compose up -d
+```
