@@ -44,20 +44,20 @@ services:
     image: valkey/valkey:8-alpine
     container_name: cache
     restart: unless-stopped
+    <<: *networks
     cap_drop:
       - ALL
     cap_add:
       - SETUID
       - SETGID
     command: valkey-server --maxmemory 128mb --maxmemory-policy allkeys-lru
-    <<: *networks
 
   piler:
     image: sutoj/piler-ee:2.0.0
     container_name: piler
+    restart: unless-stopped
+    <<: *networks
     init: true
-    networks:
-      - piler
     environment:
       - MYSQL_HOSTNAME=mysql
       - MYSQL_DATABASE=piler
@@ -102,10 +102,10 @@ services:
   piler-ui:
     image: sutoj/piler-ui:2.0.0
     container_name: piler-ui
+    restart: unless-stopped
     init: true
     user: "2001:1001"
-    networks:
-      - piler
+    <<: *networks
     volumes:
       - piler_export:/var/piler/export
       - piler_stat:/var/piler/stat
@@ -131,7 +131,7 @@ services:
     command:
       - --api.dashboard=true
       - --api.insecure=false
-      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.filename=/etc/traefik/dynamic.yaml
       - --providers.file.watch=true
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
@@ -141,7 +141,7 @@ services:
       - "443:443"
     volumes:
       - piler_traefik:/letsencrypt
-      - ./traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
     labels:
       - "traefik.enable=true"
 
