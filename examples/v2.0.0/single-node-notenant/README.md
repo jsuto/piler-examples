@@ -11,6 +11,7 @@ docker volume create piler_manticore
 docker volume create piler_etc
 docker volume create piler_store
 docker volume create piler_astore
+docker volume create piler_tmp
 docker volume create piler_traefik
 ```
 

@@ -79,6 +79,7 @@ services:
       - piler_etc:/etc/piler
       - piler_store:/var/piler/store
       - piler_astore:/var/piler/astore
+      - piler_tmp:/var/piler/tmp
       - piler_stat:/var/piler/stat
       - ./archive.example.com.lic:/etc/piler/piler.lic:ro
     healthcheck:
@@ -155,6 +156,8 @@ volumes:
   piler_store:
     external: true
   piler_astore:
+    external: true
+  piler_tmp:
     external: true
   piler_traefik:
     external: true
