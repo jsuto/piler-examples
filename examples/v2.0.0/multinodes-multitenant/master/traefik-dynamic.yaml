@@ -1,0 +1,30 @@
+http:
+  middlewares:
+    piler_headers:
+      headers:
+        customResponseHeaders:
+          Server: ""
+          Strict-Transport-Security: "max-age=31536000"
+          X-Content-Type-Options: "nosniff"
+          Referrer-Policy: "same-origin"
+
+  routers:
+    piler-ui:
+      rule: "Host(`admin1.example.com`) || Host(`test1.example.com`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - "piler_headers"
+      service: piler-ui
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    piler-ui:
+      loadBalancer:
+        servers:
+          - url: "http://piler-ui:3000"
+        healthCheck:
+          path: /livez
+          interval: "10s"
+          timeout: "2s"

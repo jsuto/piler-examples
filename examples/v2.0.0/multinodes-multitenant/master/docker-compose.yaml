@@ -1,0 +1,170 @@
+x-networks: &networks
+  networks:
+    - piler
+
+services:
+  mysql:
+    image: mariadb:12.0.2
+    container_name: mysql
+    restart: unless-stopped
+    <<: *networks
+    cap_drop:
+      - ALL
+    cap_add:
+      - dac_override
+      - setuid
+      - setgid
+    environment:
+      - MYSQL_DATABASE=aaaaa
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=d6Yg9SAw6IinOzoOMkK1
+      - MYSQL_ROOT_PASSWORD=duQWreqhXIbKilphuPLG
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - piler_db:/var/lib/mysql
+    ports:
+      - "10.0.0.2:3306:3306"
+
+  manticore:
+    image: manticoresearch/manticore:13.11.0
+    container_name: manticore
+    restart: unless-stopped
+    <<: *networks
+    volumes:
+      - ./manticore.conf:/etc/manticoresearch/manticore.conf
+      - piler_manticore:/var/lib/manticore
+    ports:
+      - "10.0.0.2:9306:9306"
+      - "10.0.0.2:9307:9307"
+
+  tika:
+    image: apache/tika:3.2.3.0
+    container_name: tika
+    restart: unless-stopped
+    <<: *networks
+    cap_drop:
+      - ALL
+
+  cache:
+    image: valkey/valkey:8-alpine
+    container_name: cache
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+    command: valkey-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    <<: *networks
+
+  piler:
+    image: sutoj/piler-ee:test
+    container_name: piler
+    restart: unless-stopped
+    init: true
+    <<: *networks
+    environment:
+      - MYSQL_HOSTNAME=mysql
+      - MYSQL_DATABASE=piler
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=d6Yg9SAw6IinOzoOMkK1
+      - MYSQL_ROOT_PASSWORD=duQWreqhXIbKilphuPLG
+      - PILER_HOSTNAME=admin1.example.com
+      - CACHE_HOSTNAME=cache
+      - MANTICORE_HOST=manticore
+      - NODE_TYPE=MASTER
+      - ADMIN_PASSWORD_HASH=$$2a$$10$$bsTQ7AamMg2n0oXEq.WkYeNiS8.8mutrv6YQEkyUfHn4zbBWxB.e6
+      - MULTITENANCY=1
+      - MULTINODES=1
+      - ENCRYPTED_SQL=0
+      - DYNAMIC_INDEX=1
+      - RT=1
+      - WORKERS=10.0.0.3
+      - MANTICORE_WORKERS=10.0.0.3
+      - MYSQL_WORKERS=10.0.0.3
+    volumes:
+      - piler_etc:/etc/piler
+      - piler_store:/var/piler/store
+      - piler_astore:/var/piler/astore
+      - piler_stat:/var/piler/stat
+      - piler_tenant:/var/piler/tenant
+    deploy:
+      resources:
+        reservations:
+          memory: 512M
+        limits:
+          memory: 768M
+
+    depends_on:
+      - "cache"
+      - "mysql"
+      - "tika"
+
+  piler-ui:
+    image: sutoj/piler-ui:test
+    container_name: piler-ui
+    restart: unless-stopped
+    init: true
+    user: "2001:1001"
+    <<: *networks
+    volumes:
+      - piler_export:/var/piler/export
+      - piler_stat:/var/piler/stat
+      - piler_store:/var/piler/store:ro
+      - piler_astore:/var/piler/astore:ro
+      - piler_etc:/etc/piler
+      - piler_tenant:/var/piler/tenant
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./env:/app/.env
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+      nproc: 4096
+    depends_on:
+      - "mysql"
+      - "piler"
+
+  traefik:
+    image: traefik:v3.5.2
+    container_name: traefik
+    restart: unless-stopped
+    <<: *networks
+    command:
+      - --api.dashboard=false
+      - --api.insecure=false
+      - --providers.file.filename=/etc/traefik/dynamic.yaml
+      - --providers.file.watch=true
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=sj@example.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "443:443"
+    volumes:
+      - piler_traefik:/letsencrypt
+      - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    labels:
+      - "traefik.enable=true"
+
+volumes:
+  piler_db:
+    external: true
+  piler_manticore:
+    external: true
+  piler_etc:
+    external: true
+  piler_store:
+    external: true
+  piler_astore:
+    external: true
+  piler_traefik:
+    external: true
+
+  piler_stat: {}
+  piler_export: {}
+  piler_tenant: {}
+
+networks:
+  piler:
+    name: piler
