@@ -18,9 +18,15 @@ docker volume create piler_tmp
 docker volume create piler_traefik
 ```
 
-## Get the licenses for both the UI and the archive
+## Get the license JWT file
 
 You need licenses for both the master and the worker nodes.
+
+Also download the public key for the license:
+
+```
+curl -o license.pub https://download.mailpiler.com/license.pub
+```
 
 ## Customise files with your passwords, domain names
 

@@ -81,7 +81,8 @@ services:
       - piler_astore:/var/piler/astore
       - piler_tmp:/var/piler/tmp
       - piler_stat:/var/piler/stat
-      - ./archive.example.com.lic:/etc/piler/piler.lic:ro
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./license.pub:/etc/piler/license.pub:ro
     healthcheck:
       test: curl -s smtp://localhost/
       interval: "10s"
