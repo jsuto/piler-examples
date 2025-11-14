@@ -1,0 +1,23 @@
+http:
+  routers:
+    piler-ui:
+      rule: "Host(`archive.example.com`)"
+      entryPoints:
+        - websecure
+      service: piler-ui
+      tls:
+        certResolver: letsencrypt
+
+    traefik-dashboard:
+      rule: "Host(`traefik.archive.example.com`)"
+      entryPoints:
+        - websecure
+      service: api@internal
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    piler-ui:
+      loadBalancer:
+        servers:
+          - url: "http://piler-ui:3000"
