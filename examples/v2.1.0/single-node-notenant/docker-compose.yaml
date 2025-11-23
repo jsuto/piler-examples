@@ -66,8 +66,8 @@ services:
       - piler_etc:/etc/piler
       - piler_tmp:/var/piler/tmp
       - piler_store:/var/piler/store:ro
-      - ./config/license-notenant.jwt:/etc/piler/license.jwt:ro
-      - ./config/license.pub:/etc/piler/license.pub:ro
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./license.pub:/etc/piler/license.pub:ro
       - ./piler.conf:/etc/piler/piler.conf:ro
     healthcheck:
       test: curl -s smtp://localhost/
@@ -101,7 +101,6 @@ services:
       - piler_tmp:/var/piler/tmp
       - piler_stat:/var/piler/stat
       - ./license.jwt:/etc/piler/license.jwt:ro
-      - ./license.pub:/etc/piler/license.pub:ro
       - ./piler.key:/etc/piler/piler.key:ro
       - ./env:/var/piler/.env
     deploy:
@@ -117,7 +116,7 @@ services:
       - "tika"
 
   piler-ui:
-    image: sutoj/piler-ui:2.0.0
+    image: sutoj/piler-ui:2.1.0
     container_name: piler-ui
     restart: unless-stopped
     init: true
@@ -128,8 +127,8 @@ services:
       - piler_stat:/var/piler/stat
       - piler_store:/var/piler/store:ro
       - piler_astore:/var/piler/astore:ro
-      - piler_etc:/etc/piler
       - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./piler.key:/etc/piler/piler.key:ro
       - ./env:/app/.env
     ulimits:
       nofile:
@@ -143,7 +142,7 @@ services:
       - "piler"
 
   scanner:
-    image: sutoj/scanner:1.1.0
+    image: sutoj/scanner:1.1.1
     container_name: scanner
     init: true
     user: "2001:1001"

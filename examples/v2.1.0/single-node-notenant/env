@@ -15,7 +15,7 @@ REDIS_ADDR=cache:6379
 HEADER_LINK=https://example.com/
 HEADER_LINK_TITLE=EXAMPLE archive
 
-LOG_LEVEL=DEBUG
+LOG_LEVEL=INFO
 SMARTHOST=smarthost.example.com
 SMARTHOST_PORT=25
 NOREPLY_EMAIL=no-reply@archive.example.com
