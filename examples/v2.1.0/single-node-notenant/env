@@ -31,3 +31,6 @@ SECURITY_RISK_ENABLED=true
 COMPLIANCE_RISK_ENABLED=true
 SCAN_RATE_LIMIT=1000
 SMART_INSIGHTS_ENABLED=true
+
+## This must match number_of_worker_processes in piler.conf
+PILER_THREADS=3
