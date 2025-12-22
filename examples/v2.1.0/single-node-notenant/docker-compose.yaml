@@ -90,7 +90,7 @@ services:
       - PILER_HOSTNAME=archive.example.com
       - CACHE_HOSTNAME=cache
       - MANTICORE_HOST=manticore
-      - MULTITENANCY=0
+      - MULTITENANCY=1
       - MULTINODES=0
       - ENCRYPTED_SQL=0
       - PILER_ENV_FILE=/var/piler/.env
@@ -142,7 +142,7 @@ services:
       - "piler"
 
   scanner:
-    image: sutoj/scanner:1.1.1
+    image: sutoj/scanner:1.1.2
     container_name: scanner
     init: true
     user: "2001:1001"
@@ -156,28 +156,6 @@ services:
     depends_on:
       - "mysql"
 
-  traefik:
-    image: traefik:v3.5.2
-    container_name: traefik
-    restart: unless-stopped
-    <<: *networks
-    command:
-      - --api.dashboard=true
-      - --api.insecure=false
-      - --providers.file.filename=/etc/traefik/dynamic.yaml
-      - --providers.file.watch=true
-      - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
-      - --certificatesresolvers.letsencrypt.acme.email=your-email@example.com
-      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
-    ports:
-      - "443:443"
-    volumes:
-      - piler_traefik:/letsencrypt
-      - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
-    labels:
-      - "traefik.enable=true"
-
 volumes:
   piler_db:
     external: true
@@ -190,8 +168,6 @@ volumes:
   piler_astore:
     external: true
   piler_tmp:
-    external: true
-  piler_traefik:
     external: true
 
   piler_stat: {}

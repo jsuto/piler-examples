@@ -38,3 +38,7 @@ Edit docker-compose.yaml, and perform any customisation you need.
 ```
 docker compose up -d
 ```
+
+## Notes
+
+Don't change the default mysql database ("aaaaa"), it's intentional.
