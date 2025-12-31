@@ -24,7 +24,7 @@ services:
       - piler_db:/var/lib/mysql
 
   manticore:
-    image: manticoresearch/manticore:13.11.0
+    image: manticoresearch/manticore:15.1.0
     container_name: manticore
     restart: unless-stopped
     <<: *networks
@@ -77,7 +77,7 @@ services:
       retries: 3
 
   piler:
-    image: sutoj/piler-ee:2.1.0
+    image: sutoj/piler-ee:2.1.1
     container_name: piler
     restart: unless-stopped
     <<: *networks
@@ -90,7 +90,6 @@ services:
       - PILER_HOSTNAME=archive.example.com
       - CACHE_HOSTNAME=cache
       - MANTICORE_HOST=manticore
-      - MULTITENANCY=1
       - MULTINODES=0
       - ENCRYPTED_SQL=0
       - PILER_ENV_FILE=/var/piler/.env
@@ -116,7 +115,7 @@ services:
       - "tika"
 
   piler-ui:
-    image: sutoj/piler-ui:2.1.0
+    image: sutoj/piler-ui:2.1.1
     container_name: piler-ui
     restart: unless-stopped
     init: true

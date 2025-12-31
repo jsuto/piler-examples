@@ -1,7 +1,9 @@
-# Deploying a no-tenant piler with new UI
+# Deploying piler 2.1.1 with new UI
 
-This docker compose stack gives you a no-tenant deployment of piler enterprise v2.1.0
-including traefik reverse proxy to give you an A-grade TLS certificate for https
+This docker compose stack gives you complete piler enterprise v2.1.1 deployment
+including traefik reverse proxy to provide you an A-grade TLS certificate for https.
+
+Your license determines whether it's a no-tenant or multi-tenant deployment.
 
 ## Create the external volumes
 
