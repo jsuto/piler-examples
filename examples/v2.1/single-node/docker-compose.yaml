@@ -121,6 +121,8 @@ services:
     init: true
     user: "2001:1001"
     <<: *networks
+    environment:
+      - XDG_CACHE_HOME=/tmp/.cache
     volumes:
       - piler_export:/var/piler/export
       - piler_stat:/var/piler/stat
