@@ -33,7 +33,9 @@ dd if=/dev/urandom bs=64 count=1 of=piler.key
 
 ## Customise files with your passwords, domain names
 
-Edit docker-compose.yaml, and perform any customisation you need.
+Edit docker-compose.yaml, and perform any customisation you need, change the default passwords, etc.
+
+Edit traefik-dynamic.yaml and set your own hostnames for the archive.
 
 ## Run the docker compose stack
 
