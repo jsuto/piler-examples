@@ -34,3 +34,6 @@ SMART_INSIGHTS_ENABLED=true
 
 ## This must match number_of_worker_processes in piler.conf
 PILER_THREADS=3
+
+## Be sure to customize this value
+IMAP_ENCRYPT_KEY=CYPoiTlFfj7lwApwaOKK
