@@ -1,0 +1,234 @@
+x-networks: &networks
+  networks:
+    - piler
+
+services:
+  mysql:
+    image: mariadb:12.0.2
+    container_name: mysql
+    restart: unless-stopped
+    <<: *networks
+    cap_drop:
+      - ALL
+    cap_add:
+      - dac_override
+      - setuid
+      - setgid
+    environment:
+      - MYSQL_DATABASE=aaaaa
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
+      - MYSQL_ROOT_PASSWORD=abcde123
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - piler_db:/var/lib/mysql
+
+  manticore:
+    image: manticoresearch/manticore:15.1.0
+    container_name: manticore
+    restart: unless-stopped
+    <<: *networks
+    volumes:
+      - ./manticore.conf:/etc/manticoresearch/manticore.conf
+      - piler_manticore:/var/lib/manticore
+
+  tika:
+    image: apache/tika:3.2.3.0
+    container_name: tika
+    restart: unless-stopped
+    <<: *networks
+    cap_drop:
+      - ALL
+
+  cache:
+    image: valkey/valkey:8-alpine
+    container_name: cache
+    restart: unless-stopped
+    <<: *networks
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+    command: valkey-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+  piler-smtp:
+    image: sutoj/piler-smtp:2.1.0
+    container_name: smtp
+    restart: unless-stopped
+    init: true
+    <<: *networks
+    environment:
+      - LOG_LEVEL=INFO
+    ports:
+      - "25:25"
+    volumes:
+      - piler_etc:/etc/piler
+      - piler_tmp:/var/piler/tmp
+      - piler_store:/var/piler/store:ro
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./license.pub:/etc/piler/license.pub:ro
+      - ./piler.conf:/etc/piler/piler.conf:ro
+    healthcheck:
+      test: curl -s smtp://localhost/
+      interval: "10s"
+      timeout: "3s"
+      start_period: "15s"
+      retries: 3
+
+  piler:
+    image: sutoj/piler-ee:2.1.1
+    container_name: piler
+    restart: unless-stopped
+    <<: *networks
+    init: true
+    environment:
+      - MYSQL_HOSTNAME=mysql
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=piler123
+      - MYSQL_ROOT_PASSWORD=abcde123
+      - PILER_HOSTNAME=archive.example.com
+      - CACHE_HOSTNAME=cache
+      - MANTICORE_HOST=manticore
+      - MULTINODES=0
+      - ENCRYPTED_SQL=0
+      - PILER_ENV_FILE=/var/piler/.env
+    volumes:
+      - piler_etc:/etc/piler
+      - piler_store:/var/piler/store
+      - piler_astore:/var/piler/astore
+      - piler_tmp:/var/piler/tmp
+      - piler_stat:/var/piler/stat
+      - piler_s3:/var/piler/s3
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./piler.key:/etc/piler/piler.key:ro
+      - ./env:/var/piler/.env
+    deploy:
+      resources:
+        reservations:
+          memory: 1024M
+        limits:
+          memory: 2048M
+    depends_on:
+      - "cache"
+      - "mysql"
+      - "manticore"
+      - "tika"
+
+  piler-ui:
+    image: sutoj/piler-ui:2.1.1
+    container_name: piler-ui
+    restart: unless-stopped
+    init: true
+    user: "2001:1001"
+    <<: *networks
+    environment:
+      - XDG_CACHE_HOME=/tmp/.cache
+    volumes:
+      - piler_export:/var/piler/export
+      - piler_stat:/var/piler/stat
+      - piler_store:/var/piler/store:ro
+      - piler_astore:/var/piler/astore:ro
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./piler.key:/etc/piler/piler.key:ro
+      - ./env:/app/.env
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+      nproc: 4096
+    depends_on:
+      - "cache"
+      - "mysql"
+      - "manticore"
+      - "piler"
+
+  scanner:
+    image: sutoj/scanner:1.1.2
+    container_name: scanner
+    init: true
+    user: "2001:1001"
+    <<: *networks
+    volumes:
+      - piler_store:/var/piler/store:ro
+      - piler_astore:/var/piler/astore:ro
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./piler.key:/etc/piler/piler.key:ro
+      - ./env:/app/.env
+    depends_on:
+      - "mysql"
+
+  s3uploader:
+    image: sutoj/s3uploader:2.1.1
+    container_name: s3uploader
+    init: true
+    user: "1001:1001"
+    <<: *networks
+    environment:
+      - S3_ENDPOINT=minio:9000
+      - S3_REGION=us-east-1
+      - S3_ACCESS_KEY=root
+      - S3_SECRET_KEY=example156
+      - S3_WORKERS=5
+    volumes:
+      - piler_s3:/var/piler/s3
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    <<: *networks
+    environment:
+      - MINIO_ROOT_USER=root
+      - MINIO_ROOT_PASSWORD=example156
+    command: server /data
+    volumes:
+      - piler_minio:/data
+
+  traefik:
+    image: traefik:v3.5.2
+    container_name: traefik
+    restart: unless-stopped
+    <<: *networks
+    command:
+      - --api.dashboard=true
+      - --api.insecure=false
+      - --providers.file.filename=/etc/traefik/dynamic.yaml
+      - --providers.file.watch=true
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=your-email@example.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "443:443"
+    volumes:
+      - piler_traefik:/letsencrypt
+      - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    labels:
+      - "traefik.enable=true"
+
+volumes:
+  piler_db:
+    external: true
+  piler_manticore:
+    external: true
+  piler_etc:
+    external: true
+  piler_store:
+    external: true
+  piler_astore:
+    external: true
+  piler_tmp:
+    external: true
+  piler_s3:
+    external: true
+  piler_minio:
+    external: true
+  piler_traefik:
+    external: true
+
+  piler_stat: {}
+  piler_export: {}
+
+networks:
+  piler:
+    name: piler

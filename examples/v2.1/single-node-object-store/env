@@ -1,0 +1,51 @@
+LICENSE_FILE=/etc/piler/license.jwt
+
+LISTEN_ADDR=:3000
+
+MYSQL_USER=piler
+MYSQL_PASSWORD=piler123
+MYSQL_HOST=mysql:3306
+MYSQL_MAX_OPEN_CONN=30
+MYSQL_MAX_IDLE_CONN=10
+MYSQL_CONN_MAX_LIFETIME=300s
+
+MANTICORE_DSN=piler:piler123@tcp(manticore:9306)/?parseTime=true
+MANTICORE_READONLY_DSN=piler:piler123@tcp(manticore:9307)/?parseTime=true
+REDIS_ADDR=cache:6379
+HEADER_LINK=https://example.com/
+HEADER_LINK_TITLE=EXAMPLE archive
+
+LOG_LEVEL=INFO
+SMARTHOST=smarthost.example.com
+SMARTHOST_PORT=25
+NOREPLY_EMAIL=no-reply@archive.example.com
+
+ENABLE_DELETE=true
+NEED_TO_APPROVE_DELETE=false
+
+TIKA_URL=http://tika:9998/tika
+
+ML_PHISHING_ENABLED=true
+ML_PHISHING_THRESHOLD=0.5
+SECURITY_RISK_ENABLED=true
+COMPLIANCE_RISK_ENABLED=true
+SCAN_RATE_LIMIT=1000
+SMART_INSIGHTS_ENABLED=true
+
+## This must match number_of_worker_processes in piler.conf
+PILER_THREADS=3
+
+## Be sure to customize this value
+IMAP_ENCRYPT_KEY=CYPoiTlFfj7lwApwaOKK
+
+
+## S3 configuration
+
+S3_ENDPOINT=minio:9000
+S3_ACCESS_KEY=root
+S3_SECRET_KEY=example156
+S3_USE_SSL=false
+S3_REGION=us-east-1
+S3_WORKERS=5
+
+RETRIEVER_METHOD=s3
