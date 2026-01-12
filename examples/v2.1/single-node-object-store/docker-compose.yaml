@@ -53,7 +53,7 @@ services:
     command: valkey-server --maxmemory 128mb --maxmemory-policy allkeys-lru
 
   piler-smtp:
-    image: sutoj/piler-smtp:2.1.0
+    image: sutoj/piler-smtp:1.1.2
     container_name: smtp
     restart: unless-stopped
     init: true
