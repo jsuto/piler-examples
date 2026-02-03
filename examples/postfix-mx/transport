@@ -1,0 +1,11 @@
+# Transport map for piler email archiving relay
+#
+# Route all mail for archive.example.com to the internal worker pool.
+# Postfix performs an MX lookup on "workers.int.example.com" and
+# round-robins across the equal-priority MX records.
+#
+# After editing, rebuild the hash map:
+#   postmap /etc/postfix/transport
+#   postfix reload
+
+archive.example.com    relay:workers.int.example.com
