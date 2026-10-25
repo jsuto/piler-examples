@@ -1,0 +1,87 @@
+# Alert rules for piler-ui's /metrics, in the Prometheus rule format. They
+# work in Prometheus, Grafana Cloud / Mimir (mimirtool rules load), Thanos,
+# VictoriaMetrics (vmalert) and other Prometheus-compatible systems.
+#
+# The rules expect the job label "piler", and role="master" on the target of
+# a multi-node master (see prometheus.yaml). Tune the
+# thresholds and windows to your tenants: a tenant with little mail may be
+# quiet for longer than the journaling window on a weekend.
+
+groups:
+  - name: piler
+    rules:
+      - alert: PilerDown
+        expr: up{job="piler"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "piler-ui {{ $labels.instance }} doesn't answer"
+          description: "The /metrics scrape of {{ $labels.instance }} failed for 5 minutes. Check the container, and that the scraper's address is in ALLOWED_CIDRS."
+
+      - alert: PilerTenantJournalingStopped
+        # The received count only grows while the tenant's email arrives
+        expr: |
+          delta(piler_tenant_messages_received{job="piler"}[6h]) <= 0
+            and piler_tenant_messages_received{job="piler"} > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No email for tenant {{ $labels.tenant }} in 6 hours"
+          description: "Tenant {{ $labels.tenant }} received no email on {{ $labels.instance }} for 6 hours. Check the journaling rule at the customer and the path to piler-smtp."
+
+      - alert: PilerTenantMetricsMissing
+        # piler-ui writes the last-success gauge after every successful
+        # collection, and it expires 5 minutes after the last one: an
+        # instance that answers without it has a failing collector. A
+        # multi-node master has no tenant metrics, its target is labeled
+        # role="master" (see prometheus.yaml).
+        expr: |
+          up{job="piler", role!="master"} == 1
+            unless on (instance) piler_tenant_metrics_last_success_timestamp_seconds{job="piler"}
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No tenant metrics from {{ $labels.instance }}"
+          description: "The tenant metrics collector of {{ $labels.instance }} hasn't succeeded for 15 minutes. piler-ui logs the failing tenant ('tenant metrics: ...')."
+
+      - alert: PilerDiskAlmostFull
+        expr: disk_used_bytes{job="piler"} / disk_size_bytes{job="piler"} > 0.85
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The store disk of {{ $labels.instance }} is {{ $value | humanizePercentage }} full"
+          description: "The disk of the email store is over 85% full. With S3 storage this is the local disk of piler-ui; monitor the MariaDB and Manticore volumes with a host exporter."
+
+      - alert: PilerDatabaseConnectionsHigh
+        expr: db_connections_utilization_percent{job="piler"} > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MariaDB connections of {{ $labels.instance }} at {{ $value | humanize }}%"
+          description: "Over 80% of MariaDB's max_connections are in use for 10 minutes."
+
+      - alert: PilerHTTPErrors
+        expr: |
+          sum by (instance) (rate(http_requests_by_status_class{job="piler", class="5xx"}[10m]))
+            / sum by (instance) (rate(http_requests_by_status_class{job="piler"}[10m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of the requests to {{ $labels.instance }} fail"
+          description: "More than 5% of the HTTP requests ended with a 5xx status for 10 minutes. See the piler-ui logs."
+
+      - alert: PilerSlowRequests
+        expr: |
+          histogram_quantile(0.95, sum by (instance, le) (rate(http_request_duration_seconds_bucket{job="piler"}[10m]))) > 5
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "95% of the requests to {{ $labels.instance }} take up to {{ $value | humanizeDuration }}"
+          description: "The 95th percentile of the request time is over 5 seconds for 15 minutes."

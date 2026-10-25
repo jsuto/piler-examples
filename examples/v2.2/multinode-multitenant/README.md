@@ -194,6 +194,13 @@ docker compose exec s3uploader sh -c 'mv /var/piler/error/*.m /var/piler/s3/0/'
    done | mariadb -h manticore -P9306'
    ```
 
+## Monitoring
+
+See the [monitoring example](../../monitoring/): scrape the master's
+piler-ui and every worker's piler-ui (port 3000 on the private network),
+the tenant metrics come from the workers. `ALLOWED_CIDRS` (worker `.env`,
+master `piler.env`) must include the scraper's address.
+
 ## Upgrading
 
 Upgrade the workers first, then the master: set `PILER_VERSION` in `.env`
@@ -210,7 +217,6 @@ of the version first.
 ## Notes
 
 - Don't change the default MariaDB database (`aaaaa`), it's intentional.
-- `/healthz` and `/metrics` of piler-ui answer only the allowed addresses.
 - For a local test of S3 storage, `sutoj/minio:RELEASE.2025-07-23` works
   (MinIO no longer publishes images); in production use your S3 service.
 - To make the MariaDB data encrypted at rest, see `ENCRYPTED_SQL` and the

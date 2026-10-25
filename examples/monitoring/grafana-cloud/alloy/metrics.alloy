@@ -1,0 +1,36 @@
+// Scrapes piler-ui's /metrics and sends them to Grafana Cloud.
+// Alloy's address must be in piler-ui's ALLOWED_CIDRS.
+
+prometheus.scrape "piler" {
+  job_name        = "piler"
+  scrape_interval = "30s"
+  metrics_path    = "/metrics"
+
+  targets = [
+    // A single node (the piler-ui container, on Alloy's Docker network)
+    {"__address__" = "piler-ui:3000", "role" = "single"},
+
+    // A multi-node deployment: the master reports its own process,
+    // database and HTTP metrics, the workers the tenant metrics too
+    //{"__address__" = "piler-ui:3000", "role" = "master"},
+    //{"__address__" = "worker0.example.internal:3000", "role" = "worker"},
+    //{"__address__" = "worker1.example.internal:3000", "role" = "worker"},
+  ]
+
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+
+  external_labels = {
+    deployment = sys.env("PILER_DEPLOYMENT"),
+  }
+}

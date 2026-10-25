@@ -151,6 +151,7 @@ services:
     user: "2001:1001"
     environment:
       XDG_CACHE_HOME: /tmp/.cache
+      ALLOWED_CIDRS: ${ALLOWED_CIDRS}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       IMAP_ENCRYPT_KEY: ${IMAP_ENCRYPT_KEY}

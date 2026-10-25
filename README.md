@@ -8,6 +8,12 @@
   and several workers on separate hosts, emails in S3-compatible storage,
   for hosting providers and MSPs
 
+## Monitoring
+
+* [Monitoring](examples/monitoring/): piler-ui's metrics, alert rules
+  (Prometheus format, with tests), and a Grafana Cloud setup with Alloy and
+  a dashboard
+
 ## Mail flow, TLS, security
 
 * [Postfix as MX](examples/postfix-mx/): receive the journal emails and pass

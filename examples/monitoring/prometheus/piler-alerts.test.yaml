@@ -1,0 +1,117 @@
+# Unit tests of piler-alerts.yaml. After changing a rule:
+#   promtool test rules piler-alerts.test.yaml
+
+rule_files:
+  - piler-alerts.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # Samples every minute, as from a scrape: an instant query looks back only
+  # 5 minutes, sparser samples would reset the alert's "for"
+  - name: journaling stops for one tenant
+    interval: 1m
+    input_series:
+      # customer1 receives email for 3 hours, then nothing
+      - series: 'piler_tenant_messages_received{job="piler", instance="worker0:3000", tenant="customer1"}'
+        values: '100+1x180 280x600'
+      # customer2 keeps receiving
+      - series: 'piler_tenant_messages_received{job="piler", instance="worker0:3000", tenant="customer2"}'
+        values: '50+1x780'
+    alert_rule_test:
+      # 2 hours after the last email: not yet
+      - eval_time: 5h
+        alertname: PilerTenantJournalingStopped
+        exp_alerts: []
+      # 6.5 hours after the last email
+      - eval_time: 10h
+        alertname: PilerTenantJournalingStopped
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: worker0:3000
+              tenant: customer1
+            exp_annotations:
+              summary: "No email for tenant customer1 in 6 hours"
+              description: "Tenant customer1 received no email on worker0:3000 for 6 hours. Check the journaling rule at the customer and the path to piler-smtp."
+
+  - name: a tenant that never received email doesn't alert
+    interval: 1m
+    input_series:
+      - series: 'piler_tenant_messages_received{job="piler", instance="worker0:3000", tenant="new"}'
+        values: '0x600'
+    alert_rule_test:
+      - eval_time: 9h
+        alertname: PilerTenantJournalingStopped
+        exp_alerts: []
+
+  - name: the tenant metrics collector of one worker stops
+    interval: 1m
+    input_series:
+      - series: 'up{job="piler", instance="worker0:3000", role="worker"}'
+        values: '1x60'
+      - series: 'up{job="piler", instance="worker1:3000", role="worker"}'
+        values: '1x60'
+      # The master has no tenant metrics
+      - series: 'up{job="piler", instance="master:3000", role="master"}'
+        values: '1x60'
+      # worker0's collector succeeds for 20 minutes, then the gauge expires
+      - series: 'piler_tenant_metrics_last_success_timestamp_seconds{job="piler", instance="worker0:3000"}'
+        values: '0+60x20'
+      - series: 'piler_tenant_metrics_last_success_timestamp_seconds{job="piler", instance="worker1:3000"}'
+        values: '0+60x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PilerTenantMetricsMissing
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: PilerTenantMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: worker0:3000
+              role: worker
+            exp_annotations:
+              summary: "No tenant metrics from worker0:3000"
+              description: "The tenant metrics collector of worker0:3000 hasn't succeeded for 15 minutes. piler-ui logs the failing tenant ('tenant metrics: ...')."
+
+  - name: disk almost full
+    interval: 1m
+    input_series:
+      - series: 'disk_size_bytes{job="piler", instance="worker0:3000"}'
+        values: '1000x60'
+      - series: 'disk_used_bytes{job="piler", instance="worker0:3000"}'
+        values: '800x25 900x35'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PilerDiskAlmostFull
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: PilerDiskAlmostFull
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: worker0:3000
+            exp_annotations:
+              summary: "The store disk of worker0:3000 is 90% full"
+              description: "The disk of the email store is over 85% full. With S3 storage this is the local disk of piler-ui; monitor the MariaDB and Manticore volumes with a host exporter."
+
+  - name: piler-ui down
+    interval: 1m
+    input_series:
+      - series: 'up{job="piler", instance="master:3000"}'
+        values: '1x5 0x10'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PilerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: piler
+              instance: master:3000
+            exp_annotations:
+              summary: "piler-ui master:3000 doesn't answer"
+              description: "The /metrics scrape of master:3000 failed for 5 minutes. Check the container, and that the scraper's address is in ALLOWED_CIDRS."

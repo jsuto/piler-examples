@@ -1,0 +1,21 @@
+// Optional: CPU, memory and the disks of this host, e.g. the volumes of
+// MariaDB and Manticore, which piler-ui's disk gauge doesn't cover. Needs
+// the host's /proc, /sys and / (see docker-compose.yaml). Delete this file
+// if you monitor the hosts otherwise.
+
+prometheus.exporter.unix "host" {
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  rootfs_path = "/host/root"
+
+  filesystem {
+    mount_points_exclude = "^/(dev|proc|run|sys|var/lib/docker/.+)($|/)"
+  }
+}
+
+// The targets carry job="integrations/unix", as Grafana Cloud's Linux
+// integration and its dashboards expect
+prometheus.scrape "host" {
+  targets    = prometheus.exporter.unix.host.targets
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}

@@ -1,0 +1,40 @@
+# Grafana Alloy next to piler: scrapes piler-ui and sends the metrics (and,
+# optionally, the container logs and host metrics) to Grafana Cloud. The
+# settings are in .env, the Alloy configuration in alloy/.
+
+services:
+  alloy:
+    image: grafana/alloy:v1.10.2
+    restart: unless-stopped
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy
+    env_file: .env
+    volumes:
+      - ./alloy:/etc/alloy:ro
+      - alloy_data:/var/lib/alloy/data
+      # logs.alloy: the container logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # host.alloy: CPU, memory and disks of the host
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+      - /run/udev/data:/run/udev/data:ro
+    networks:
+      - piler
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  alloy_data: {}
+
+networks:
+  # piler's Docker network: "piler" for the single-node example,
+  # "piler-master" on the master of the multi-node example
+  piler:
+    name: ${PILER_NETWORK:-piler}
+    external: true

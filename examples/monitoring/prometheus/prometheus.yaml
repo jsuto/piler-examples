@@ -1,0 +1,45 @@
+# Scraping piler-ui's /metrics with Prometheus. The scraper's address must
+# be in piler-ui's ALLOWED_CIDRS, and it connects directly, not through the
+# reverse proxy.
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - piler-alerts.yaml
+
+scrape_configs:
+  - job_name: piler
+    metrics_path: /metrics
+    static_configs:
+      # A single node
+      - targets: ["piler-ui:3000"]
+        labels:
+          role: single
+
+      # A multi-node deployment: the master reports its own process,
+      # database and HTTP metrics, the workers the tenant metrics too
+      #- targets: ["master.example.internal:3000"]
+      #  labels:
+      #    role: master
+      #- targets: ["worker0.example.internal:3000", "worker1.example.internal:3000"]
+      #  labels:
+      #    role: worker
+
+  # The same /healthz the master checks, as a blackbox probe, needs the
+  # blackbox exporter (https://github.com/prometheus/blackbox_exporter):
+  # it answers 503 when MariaDB, Manticore or Redis is down
+  #- job_name: piler-health
+  #  metrics_path: /probe
+  #  params:
+  #    module: [http_2xx]
+  #  static_configs:
+  #    - targets: ["http://piler-ui:3000/healthz"]
+  #  relabel_configs:
+  #    - source_labels: [__address__]
+  #      target_label: __param_target
+  #    - source_labels: [__param_target]
+  #      target_label: instance
+  #    - target_label: __address__
+  #      replacement: blackbox-exporter:9115
