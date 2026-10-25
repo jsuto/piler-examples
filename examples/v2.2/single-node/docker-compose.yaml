@@ -99,6 +99,7 @@ services:
       - piler_astore:/var/piler/astore
       - piler_tmp:/var/piler/tmp
       - piler_stat:/var/piler/stat
+      - piler_tenant:/var/piler/tenant
       - ./license.jwt:/etc/piler/license.jwt:ro
       - ./piler.key:/etc/piler/piler.key:ro
       - ./env:/var/piler/.env
@@ -126,6 +127,8 @@ services:
     volumes:
       - piler_export:/var/piler/export
       - piler_stat:/var/piler/stat
+      # New tenants are written here, the piler container creates them
+      - piler_tenant:/var/piler/tenant
       - piler_store:/var/piler/store:ro
       - piler_astore:/var/piler/astore:ro
       - ./license.jwt:/etc/piler/license.jwt:ro
@@ -197,6 +200,7 @@ volumes:
 
   piler_stat: {}
   piler_export: {}
+  piler_tenant: {}
 
 networks:
   piler:

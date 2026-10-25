@@ -1,0 +1,31 @@
+# One router per hostname: the admin UI, and one per tenant (the tenant's
+# gui_url). Each gets its own Let's Encrypt certificate. Traefik reloads
+# this file when it changes, add a router when you add a tenant.
+#
+# With many tenants under one domain, a wildcard certificate
+# (*.archive.example.com) through a DNS challenge saves the routers, see
+# https://doc.traefik.io/traefik/https/acme/#dnschallenge
+
+http:
+  routers:
+    admin:
+      rule: "Host(`archive.example.com`)"
+      entryPoints:
+        - websecure
+      service: piler-ui
+      tls:
+        certResolver: letsencrypt
+
+    tenant-customer1:
+      rule: "Host(`customer1.archive.example.com`)"
+      entryPoints:
+        - websecure
+      service: piler-ui
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    piler-ui:
+      loadBalancer:
+        servers:
+          - url: "http://piler-ui:3000"

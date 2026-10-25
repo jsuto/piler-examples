@@ -1,0 +1,143 @@
+# Master node: the web UI and REST API of every tenant. It stores no email,
+# it queries the workers. The settings are in .env and piler.env.
+
+x-defaults: &defaults
+  restart: unless-stopped
+  networks:
+    - piler
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  mysql:
+    <<: *defaults
+    image: mariadb:12.0.2
+    cap_drop:
+      - ALL
+    cap_add:
+      - dac_override
+      - setuid
+      - setgid
+    environment:
+      - MYSQL_DATABASE=aaaaa
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - piler_db:/var/lib/mysql
+    ports:
+      # The workers copy the rules of the tenants from here
+      - "${PRIVATE_IP}:3306:3306"
+
+  manticore:
+    <<: *defaults
+    image: manticoresearch/manticore:29.9.0
+    volumes:
+      - ./manticore.conf:/etc/manticoresearch/manticore.conf
+      - piler_manticore:/var/lib/manticore
+    ports:
+      # The workers copy the categories of the tenants from here (read-only)
+      - "${PRIVATE_IP}:9307:9307"
+
+  cache:
+    <<: *defaults
+    image: valkey/valkey:8-alpine
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+    command: valkey-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+  # Creates the databases and the distributed indexes of new tenants
+  piler:
+    <<: *defaults
+    image: sutoj/piler-ee:${PILER_VERSION}
+    init: true
+    environment:
+      - NODE_TYPE=MASTER
+      - MULTINODES=1
+      - PILER_HOSTNAME=${PILER_HOSTNAME}
+      - MYSQL_HOSTNAME=mysql
+      - MYSQL_USER=piler
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_HOST=mysql:3306
+      - CACHE_HOSTNAME=cache
+      - MANTICORE_HOST=manticore
+      - MANTICORE_WORKERS=${MANTICORE_WORKERS}
+      - ENCRYPTED_SQL=0
+      - PILER_ENV_FILE=/var/piler/.env
+    volumes:
+      - piler_tenant:/var/piler/tenant
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./piler.key:/etc/piler/piler.key:ro
+      - ./piler.env:/var/piler/.env:ro
+    depends_on:
+      - mysql
+      - manticore
+      - cache
+
+  piler-ui:
+    <<: *defaults
+    image: sutoj/piler-ui:${PILER_VERSION}
+    init: true
+    user: "2001:1001"
+    environment:
+      - XDG_CACHE_HOME=/tmp/.cache
+      - WORKERS=${WORKERS}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - IMAP_ENCRYPT_KEY=${IMAP_ENCRYPT_KEY}
+    volumes:
+      # New tenants are written here, the piler container creates them
+      - piler_tenant:/var/piler/tenant
+      - piler_export:/var/piler/export
+      - ./license.jwt:/etc/piler/license.jwt:ro
+      - ./piler.key:/etc/piler/piler.key:ro
+      - ./piler.env:/app/.env:ro
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+      nproc: 4096
+    depends_on:
+      - mysql
+      - manticore
+      - cache
+      - piler
+
+  traefik:
+    <<: *defaults
+    image: traefik:v3.7.11
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yaml
+      - --providers.file.watch=true
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "443:443"
+    volumes:
+      - piler_traefik:/letsencrypt
+      - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+
+volumes:
+  piler_db:
+    external: true
+  piler_manticore:
+    external: true
+  piler_tenant:
+    external: true
+  piler_traefik:
+    external: true
+  piler_export: {}
+
+networks:
+  piler:
+    name: piler-master
