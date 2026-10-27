@@ -15,7 +15,13 @@ docker volume create piler_store
 docker volume create piler_astore
 docker volume create piler_tmp
 docker volume create piler_traefik
+docker volume create piler_error
 ```
+
+An installation set up before the `piler_error` volume keeps the error
+directory in the piler container, and loses it when the container is
+recreated. Check it's empty first (`docker exec piler ls /var/piler/error`),
+then create the volume.
 
 ## Get the license JWT file
 

@@ -100,6 +100,8 @@ services:
       - piler_tmp:/var/piler/tmp
       - piler_stat:/var/piler/stat
       - piler_tenant:/var/piler/tenant
+      # The emails piler couldn't archive, kept over container recreates
+      - piler_error:/var/piler/error
       - ./license.jwt:/etc/piler/license.jwt:ro
       - ./piler.key:/etc/piler/piler.key:ro
       - ./env:/var/piler/.env
@@ -196,6 +198,8 @@ volumes:
   piler_tmp:
     external: true
   piler_traefik:
+    external: true
+  piler_error:
     external: true
 
   piler_stat: {}

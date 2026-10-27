@@ -47,6 +47,105 @@ groups:
           summary: "No tenant metrics from {{ $labels.instance }}"
           description: "The tenant metrics collector of {{ $labels.instance }} hasn't succeeded for 15 minutes. piler-ui logs the failing tenant ('tenant metrics: ...')."
 
+      # The archiving pipeline: the piler daemon and s3uploader write these
+      # to the Redis of piler-ui on the same node every 15 seconds.
+
+      - alert: PilerArchivingErrors
+        # Every email the piler daemon can't archive goes to the error
+        # directory: it's not in the archive until it's processed again. An
+        # email that can't be moved there stays in the queue, and every
+        # retry is an error again.
+        expr: |
+          sum by (job, instance) (increase(piler_archive_messages_total{job="piler", result="error"}[10m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value | humanize }} archiving errors on {{ $labels.instance }} in 10 minutes"
+          description: "The piler daemon of {{ $labels.instance }} couldn't archive emails. Its log has the reason ('status=error', or a failed move to the error directory). Move them back to a worker directory (/var/piler/tmp/<n>) when it's fixed."
+
+      - alert: PilerErrorDirectoryNotEmpty
+        # Also the emails of an earlier failure, and the files s3uploader
+        # couldn't upload (the same directory). The count stops at 100000.
+        expr: piler_error_dir_files{job="piler"} > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanize }} files in the error directory of {{ $labels.instance }}"
+          description: "The error directory of {{ $labels.instance }} has files for an hour: emails not archived, or not uploaded to S3. Fix the cause, then move them back for processing."
+
+      - alert: PilerArchivingStalled
+        # Emails wait in the worker directories, and the daemon processes
+        # none of them
+        expr: |
+          piler_queue_files{job="piler"} > 0
+            and on (job, instance) sum by (job, instance) (rate(piler_archive_messages_total{job="piler"}[10m])) == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The piler daemon of {{ $labels.instance }} doesn't process the {{ $value | humanize }} waiting emails"
+          description: "Emails wait in /var/piler/tmp of {{ $labels.instance }}, and the piler daemon processed none in 20 minutes. Check that it runs, and its log for MariaDB or Manticore errors."
+
+      - alert: PilerQueueBacklog
+        # The daemon works, but slower than the email arrives. Tune the
+        # threshold to the email volume.
+        expr: piler_queue_files{job="piler"} > 10000
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanize }} emails wait for the piler daemon on {{ $labels.instance }}"
+          description: "Over 10000 emails wait in /var/piler/tmp of {{ $labels.instance }} for 30 minutes. Check the load of MariaDB, Manticore and Tika, or raise PILER_THREADS."
+
+      - alert: PilerPipelineMetricsMissing
+        # The daemon writes the counters while it runs, and they expire 5
+        # minutes after its last write. A multi-node master has no daemon.
+        expr: |
+          up{job="piler", role!="master"} == 1
+            unless on (instance) group by (instance) (piler_archive_messages_total{job="piler"})
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No pipeline metrics from the piler daemon of {{ $labels.instance }}"
+          description: "piler-ui of {{ $labels.instance }} answers, but the piler daemon hasn't written its metrics for 15 minutes: it doesn't run, or can't reach the Redis of REDIS_ADDR."
+
+      - alert: PilerS3UploadErrors
+        # A file that can't be moved to the error directory stays in the
+        # queue, and every retry is an error again
+        expr: |
+          sum by (job, instance) (increase(piler_s3_uploads_total{job="piler", result="error"}[10m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value | humanize }} failed S3 uploads on {{ $labels.instance }} in 10 minutes"
+          description: "s3uploader of {{ $labels.instance }} couldn't upload files after the retries. Its log has the S3 error (e.g. NoSuchBucket, AccessDenied). The archive can't read these emails until they are uploaded."
+
+      - alert: PilerS3UploadBacklog
+        # Until the upload the email is only on the local disk of the node.
+        # The age is of the oldest file of the last scan of the queue.
+        expr: piler_s3_queue_oldest_age_seconds{job="piler"} > 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A file waits for the S3 upload on {{ $labels.instance }} for {{ $value | humanizeDuration }}"
+          description: "s3uploader of {{ $labels.instance }} is behind: the oldest file in /var/piler/s3 is over an hour old. Check the S3 endpoint, and s3uploader's log for retries."
+
+      - alert: PilerS3UploaderMetricsMissing
+        # Only where s3uploader ran in the last day, a node without S3 has
+        # no s3uploader
+        expr: |
+          group by (job, instance) (max_over_time(piler_s3_queue_files{job="piler"}[1d]))
+            unless on (job, instance) piler_s3_queue_files{job="piler"}
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No metrics from s3uploader of {{ $labels.instance }}"
+          description: "s3uploader of {{ $labels.instance }} hasn't written its metrics for 15 minutes: it doesn't run, or can't reach the Redis of REDIS_ADDR. The emails it doesn't upload are only on the local disk."
+
       - alert: PilerDiskAlmostFull
         expr: disk_used_bytes{job="piler"} / disk_size_bytes{job="piler"} > 0.85
         for: 15m

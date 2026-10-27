@@ -118,7 +118,7 @@ On every worker host, in a copy of the `worker/` directory:
 3. Create the volumes and start it:
 
    ```
-   for v in piler_db piler_manticore piler_tmp piler_store piler_astore piler_s3 piler_tenant; do docker volume create $v; done
+   for v in piler_db piler_manticore piler_tmp piler_store piler_astore piler_s3 piler_tenant piler_error; do docker volume create $v; done
    docker compose up -d
    ```
 
@@ -213,6 +213,12 @@ docker compose up -d
 
 Read the [upgrade notes](https://docs.mailpiler.com/piler-ee-fiber/upgrade.html)
 of the version first.
+
+A worker set up before the `piler_error` volume keeps its error directory
+in the containers, and loses it when they are recreated. Before the
+upgrade, check it's empty (`docker compose exec piler ls /var/piler/error`,
+the same for `s3uploader`), move what's there back for processing, then
+`docker volume create piler_error`.
 
 ## Notes
 

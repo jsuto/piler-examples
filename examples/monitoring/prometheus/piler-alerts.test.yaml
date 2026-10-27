@@ -115,3 +115,196 @@ tests:
             exp_annotations:
               summary: "piler-ui master:3000 doesn't answer"
               description: "The /metrics scrape of master:3000 failed for 5 minutes. Check the container, and that the scraper's address is in ALLOWED_CIDRS."
+
+  - name: emails go to the error directory
+    interval: 1m
+    input_series:
+      # 9 errors a minute after 30 minutes
+      - series: 'piler_archive_messages_total{job="piler", instance="worker0:3000", result="error"}'
+        values: '0x30 0+9x30'
+      - series: 'piler_archive_messages_total{job="piler", instance="worker0:3000", result="archived"}'
+        values: '0+100x60'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: PilerArchivingErrors
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: PilerArchivingErrors
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: piler
+              instance: worker0:3000
+            exp_annotations:
+              summary: "90 archiving errors on worker0:3000 in 10 minutes"
+              description: "The piler daemon of worker0:3000 couldn't archive emails. Its log has the reason ('status=error', or a failed move to the error directory). Move them back to a worker directory (/var/piler/tmp/<n>) when it's fixed."
+
+  - name: files stay in the error directory
+    interval: 1m
+    input_series:
+      - series: 'piler_error_dir_files{job="piler", instance="worker0:3000"}'
+        values: '0x30 5x90'
+      - series: 'piler_error_dir_files{job="piler", instance="worker1:3000"}'
+        values: '0x120'
+    alert_rule_test:
+      # Only for 30 minutes
+      - eval_time: 60m
+        alertname: PilerErrorDirectoryNotEmpty
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: PilerErrorDirectoryNotEmpty
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: worker0:3000
+            exp_annotations:
+              summary: "5 files in the error directory of worker0:3000"
+              description: "The error directory of worker0:3000 has files for an hour: emails not archived, or not uploaded to S3. Fix the cause, then move them back for processing."
+
+  - name: the daemon stops processing the queue
+    interval: 1m
+    input_series:
+      # worker0's daemon stops after 20 minutes, the emails keep waiting
+      - series: 'piler_queue_files{job="piler", instance="worker0:3000"}'
+        values: '0x20 50x40'
+      - series: 'piler_archive_messages_total{job="piler", instance="worker0:3000", result="archived"}'
+        values: '0+10x20 200x40'
+      - series: 'piler_archive_messages_total{job="piler", instance="worker0:3000", result="error"}'
+        values: '0x60'
+      # worker1 has no waiting email and no new email: not stalled
+      - series: 'piler_queue_files{job="piler", instance="worker1:3000"}'
+        values: '0x60'
+      - series: 'piler_archive_messages_total{job="piler", instance="worker1:3000", result="archived"}'
+        values: '500x60'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: PilerArchivingStalled
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: PilerArchivingStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: piler
+              instance: worker0:3000
+            exp_annotations:
+              summary: "The piler daemon of worker0:3000 doesn't process the 50 waiting emails"
+              description: "Emails wait in /var/piler/tmp of worker0:3000, and the piler daemon processed none in 20 minutes. Check that it runs, and its log for MariaDB or Manticore errors."
+
+  - name: the queue grows
+    interval: 1m
+    input_series:
+      - series: 'piler_queue_files{job="piler", instance="worker0:3000"}'
+        values: '0+500x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: PilerQueueBacklog
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: PilerQueueBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: worker0:3000
+            exp_annotations:
+              summary: "30k emails wait for the piler daemon on worker0:3000"
+              description: "Over 10000 emails wait in /var/piler/tmp of worker0:3000 for 30 minutes. Check the load of MariaDB, Manticore and Tika, or raise PILER_THREADS."
+
+  - name: the daemon of one worker stops writing its metrics
+    interval: 1m
+    input_series:
+      - series: 'up{job="piler", instance="worker0:3000", role="worker"}'
+        values: '1x60'
+      - series: 'up{job="piler", instance="worker1:3000", role="worker"}'
+        values: '1x60'
+      # The master has no daemon
+      - series: 'up{job="piler", instance="master:3000", role="master"}'
+        values: '1x60'
+      - series: 'piler_archive_messages_total{job="piler", instance="worker0:3000", result="archived"}'
+        values: '0+1x20'
+      - series: 'piler_archive_messages_total{job="piler", instance="worker1:3000", result="archived"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: PilerPipelineMetricsMissing
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: PilerPipelineMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: worker0:3000
+              role: worker
+            exp_annotations:
+              summary: "No pipeline metrics from the piler daemon of worker0:3000"
+              description: "piler-ui of worker0:3000 answers, but the piler daemon hasn't written its metrics for 15 minutes: it doesn't run, or can't reach the Redis of REDIS_ADDR."
+
+  - name: uploads to S3 fail
+    interval: 1m
+    input_series:
+      - series: 'piler_s3_uploads_total{job="piler", instance="worker0:3000", result="error"}'
+        values: '0x30 0+9x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: PilerS3UploadErrors
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: PilerS3UploadErrors
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: piler
+              instance: worker0:3000
+            exp_annotations:
+              summary: "90 failed S3 uploads on worker0:3000 in 10 minutes"
+              description: "s3uploader of worker0:3000 couldn't upload files after the retries. Its log has the S3 error (e.g. NoSuchBucket, AccessDenied). The archive can't read these emails until they are uploaded."
+
+  - name: the S3 upload falls behind
+    interval: 1m
+    input_series:
+      # The oldest file gets older by a minute every minute after 10 minutes
+      - series: 'piler_s3_queue_oldest_age_seconds{job="piler", instance="worker0:3000"}'
+        values: '0x10 600+60x90'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: PilerS3UploadBacklog
+        exp_alerts: []
+      - eval_time: 85m
+        alertname: PilerS3UploadBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: worker0:3000
+            exp_annotations:
+              summary: "A file waits for the S3 upload on worker0:3000 for 1h 24m 0s"
+              description: "s3uploader of worker0:3000 is behind: the oldest file in /var/piler/s3 is over an hour old. Check the S3 endpoint, and s3uploader's log for retries."
+
+  - name: s3uploader stops writing its metrics
+    interval: 1m
+    input_series:
+      # worker0's s3uploader stops after 30 minutes
+      - series: 'piler_s3_queue_files{job="piler", instance="worker0:3000"}'
+        values: '0x30'
+      - series: 'piler_s3_queue_files{job="piler", instance="worker1:3000"}'
+        values: '0x90'
+      # worker2 has no S3, no s3uploader: no alert
+      - series: 'up{job="piler", instance="worker2:3000", role="worker"}'
+        values: '1x90'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: PilerS3UploaderMetricsMissing
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: PilerS3UploaderMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: worker0:3000
+            exp_annotations:
+              summary: "No metrics from s3uploader of worker0:3000"
+              description: "s3uploader of worker0:3000 hasn't written its metrics for 15 minutes: it doesn't run, or can't reach the Redis of REDIS_ADDR. The emails it doesn't upload are only on the local disk."

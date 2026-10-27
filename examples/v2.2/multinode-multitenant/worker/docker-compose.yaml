@@ -116,6 +116,9 @@ services:
       - piler_astore:/var/piler/astore
       - piler_s3:/var/piler/s3
       - piler_tenant:/var/piler/tenant
+      # The emails piler and s3uploader couldn't archive or upload, kept
+      # over container recreates
+      - piler_error:/var/piler/error
       - ./license.jwt:/etc/piler/license.jwt:ro
       - ./piler.key:/etc/piler/piler.key:ro
       - ./piler.env:/var/piler/.env:ro
@@ -140,6 +143,7 @@ services:
       <<: *s3
     volumes:
       - piler_s3:/var/piler/s3
+      - piler_error:/var/piler/error
       - ./piler.env:/var/piler/.env:ro
 
   # The master queries this piler-ui for the search results and emails of
@@ -210,6 +214,8 @@ volumes:
   piler_s3:
     external: true
   piler_tenant:
+    external: true
+  piler_error:
     external: true
   piler_export: {}
 

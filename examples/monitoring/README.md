@@ -15,8 +15,8 @@ Grafana Cloud is one option, not a requirement: the metrics, the alert
 conditions and the dashboard queries below work in any Prometheus-compatible
 system, and the table of alerts translates to other platforms.
 
-Requires piler-ee 2.2.6 or later for the tenant metrics and the
-`X-Forwarded-For` handling described below.
+Requires piler-ee 2.2.6 or later for the tenant and pipeline metrics and
+the `X-Forwarded-For` handling described below.
 
 ## What to scrape
 
@@ -67,6 +67,32 @@ deployment has a series per tenant and worker: sum them by `tenant`.
 
 The size and stored bytes are what a hoster bills and plans capacity by.
 
+### Archiving pipeline
+
+The piler daemon and s3uploader write these to the Redis of `REDIS_ADDR`
+(the setting of piler-ui, in the same `.env`) every 15 seconds, and
+piler-ui serves them: on a multi-node deployment each worker's piler-ui
+has those of its own node, from the worker's own Redis. If Redis is down,
+the daemons keep archiving and uploading, the counts are written when it's
+back. A restarted daemon continues its counters; after more than 5
+minutes down they start from 0 again, a counter reset that `rate()` and
+`increase()` handle.
+
+| Metric | Meaning |
+|---|---|
+| `piler_archive_messages_total{result}` | Emails the piler daemon processed (counter): `archived`, `duplicate`, `discarded` (by an exclusion rule), `error` (not archived: moved to the error directory, or, if it can't be moved, left in the queue and counted again at every retry) |
+| `piler_queue_files` | Emails waiting in the worker directories (`/var/piler/tmp/<n>`) |
+| `piler_error_dir_files` | Files in the error directory (`/var/piler/error`), counted by the piler daemon. s3uploader moves the files it couldn't upload to the same directory on a native install and with the Docker examples (the `piler_error` volume). |
+| `piler_s3_uploads_total{result}` | Files s3uploader handled (counter): `uploaded`, `error` (not uploaded after the retries) |
+| `piler_s3_queue_files`, `piler_s3_queue_bytes` | Files and bytes waiting for the upload (`/var/piler/s3`): set at every scan of the queue, lowered as the files are uploaded |
+| `piler_s3_queue_oldest_age_seconds` | Age of the oldest file at the last scan of the queue, 0 if none. With a large backlog the scans are far apart, and that file may have been uploaded since: an upper bound. |
+
+The directories are counted every minute by their names only, without a
+`stat` of every file, so the count stays cheap with a large backlog. The
+count stops at 100000: past that the gauge stays at 100000. The rate of
+the errors comes from the counters, not from the directory: the alert fires
+at the first failed email.
+
 ### piler-ui, database, cache
 
 | Metric | Meaning |
@@ -93,6 +119,14 @@ The rules in [piler-alerts.yaml](prometheus/piler-alerts.yaml):
 | `PilerDown` | `up == 0` for 5 minutes | piler-ui is down, or the scraper isn't allowed |
 | `PilerTenantJournalingStopped` | A tenant's received count didn't grow in 6 hours | The customer's journaling rule or the path to piler-smtp broke: email is being lost from the archive |
 | `PilerTenantMetricsMissing` | A single node or worker answers, but has no tenant metrics for 15 minutes | The collector fails, piler-ui logs the tenant (`tenant metrics: ...`) |
+| `PilerArchivingErrors` | The daemon couldn't archive emails in the last 10 minutes | Those emails are not in the archive. The daemon's log has the reason (`status=error`) |
+| `PilerErrorDirectoryNotEmpty` | The error directory has files for an hour | Emails left there from an earlier failure: move them back for processing |
+| `PilerArchivingStalled` | Emails wait in the worker directories, and the daemon processed none for 20 minutes | The daemon is stuck or stopped, e.g. MariaDB or Manticore is down |
+| `PilerQueueBacklog` | Over 10000 emails wait for 30 minutes | The daemon is slower than the email arrives. Tune the threshold to your volume |
+| `PilerPipelineMetricsMissing` | A single node or worker answers, but the daemon wrote no metrics for 15 minutes | The daemon doesn't run, or can't reach Redis |
+| `PilerS3UploadErrors` | s3uploader couldn't upload files in the last 10 minutes | The S3 setup broke (bucket, policy, credentials): the archive can't read these emails |
+| `PilerS3UploadBacklog` | The oldest file waits for the upload for over an hour | S3 is unreachable or too slow; until the upload the email is only on the local disk |
+| `PilerS3UploaderMetricsMissing` | s3uploader wrote metrics in the last day, but none for 15 minutes | s3uploader doesn't run, or can't reach Redis |
 | `PilerDiskAlmostFull` | The store disk is 85% full | |
 | `PilerDatabaseConnectionsHigh` | Over 80% of MariaDB's connections in use | |
 | `PilerHTTPErrors` | Over 5% of the requests end with 5xx | |
