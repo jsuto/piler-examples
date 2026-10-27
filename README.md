@@ -14,6 +14,11 @@
   (Prometheus format, with tests), and a Grafana Cloud setup with Alloy and
   a dashboard
 
+## Hosting
+
+* [Purging a tenant](examples/tenant-purge/): delete a tenant's database,
+  index, stored emails and settings on every node, with safety checks
+
 ## Mail flow, TLS, security
 
 * [Postfix as MX](examples/postfix-mx/): receive the journal emails and pass
