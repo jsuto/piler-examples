@@ -1,6 +1,6 @@
-# Deploying piler 2.2.0 with new UI
+# Deploying piler 2.2.5 with new UI
 
-This docker compose stack gives you complete piler enterprise v2.2.0 deployment
+This docker compose stack gives you complete piler enterprise v2.2.5 deployment
 including traefik reverse proxy to provide you an A-grade TLS certificate for https.
 
 Your license determines whether it's a no-tenant or multi-tenant deployment.
@@ -48,6 +48,20 @@ Edit traefik-dynamic.yaml and set your own hostnames for the archive.
 ```
 docker compose up -d
 ```
+
+## Upgrade
+
+Read the [upgrade notes](https://docs.mailpiler.com/piler-ee-fiber/upgrade.html)
+of every version since yours first, then set the image tags in
+`docker-compose.yaml` and run:
+
+```
+docker compose pull
+docker compose up -d
+```
+
+The piler container adds the `participants` column to the index at its
+start (2.2.5).
 
 ## Notes
 
