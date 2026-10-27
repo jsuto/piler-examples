@@ -308,3 +308,100 @@ tests:
             exp_annotations:
               summary: "No metrics from s3uploader of worker0:3000"
               description: "s3uploader of worker0:3000 hasn't written its metrics for 15 minutes: it doesn't run, or can't reach the Redis of REDIS_ADDR. The emails it doesn't upload are only on the local disk."
+
+  - name: a tenant over its quota, reported by two masters
+    interval: 1m
+    input_series:
+      # t1 goes over its storage quota after 30 minutes
+      - series: 'piler_tenant_quota_used{job="piler", instance="master:3000", role="master", tenant="t1", quota="storage"}'
+        values: '800x30 1100x120'
+      - series: 'piler_tenant_quota_used{job="piler", instance="master2:3000", role="master", tenant="t1", quota="storage"}'
+        values: '800x30 1100x120'
+      - series: 'piler_tenant_quota_limit{job="piler", instance="master:3000", role="master", tenant="t1", quota="storage"}'
+        values: '1000x150'
+      - series: 'piler_tenant_quota_limit{job="piler", instance="master2:3000", role="master", tenant="t1", quota="storage"}'
+        values: '1000x150'
+      # t2 is near its user quota
+      - series: 'piler_tenant_quota_used{job="piler", instance="master:3000", role="master", tenant="t2", quota="users"}'
+        values: '95x150'
+      - series: 'piler_tenant_quota_limit{job="piler", instance="master:3000", role="master", tenant="t2", quota="users"}'
+        values: '100x150'
+      # t3 has no email quota (unlimited): no limit series, no alert
+      - series: 'piler_tenant_quota_used{job="piler", instance="master:3000", role="master", tenant="t3", quota="emails"}'
+        values: '500000x150'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: PilerTenantQuotaExceeded
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: PilerTenantQuotaExceeded
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              tenant: t1
+              quota: storage
+            exp_annotations:
+              summary: "Tenant t1 is at 110% of its storage quota"
+              description: "Tenant t1 is over its storage quota for an hour. Raise the quota (Admin > Tenant > Quotas), or bill the overage."
+      - eval_time: 100m
+        alertname: PilerTenantQuotaNearLimit
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              job: piler
+              tenant: t2
+              quota: users
+            exp_annotations:
+              summary: "Tenant t2 is at 95% of its users quota"
+              description: "Tenant t2 uses over 90% of its users quota for an hour."
+
+  - name: the quota snapshot stops
+    interval: 1m
+    input_series:
+      # Collected at 0m, at 15m, then never again
+      - series: 'piler_quota_snapshot_age_seconds{job="piler", instance="master:3000", role="master"}'
+        values: '0+60x14 0+60x200'
+      - series: 'piler_tenant_quota_age_seconds{job="piler", instance="master:3000", role="master", tenant="t1"}'
+        values: '0+60x14 0+60x200'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: PilerQuotaSnapshotStale
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: PilerQuotaSnapshotStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+            exp_annotations:
+              summary: "The quota snapshot is 1h 25m 0s old"
+              description: "The master (the leader) collects the quota usage every QUOTA_SNAPSHOT_INTERVAL for the quota dashboard, quota/all, the quota emails and these metrics. It hasn't succeeded for over an hour: see the master's log ('Quota snapshot failed')."
+      # The tenants' usage is as old as the snapshot: one alert, not two
+      - eval_time: 100m
+        alertname: PilerTenantQuotaUsageStale
+        exp_alerts: []
+
+  - name: a worker doesn't answer the master
+    interval: 1m
+    input_series:
+      # The snapshot is fresh, t1's usage isn't complete from 20m
+      - series: 'piler_quota_snapshot_age_seconds{job="piler", instance="master:3000", role="master"}'
+        values: '300x150'
+      - series: 'piler_tenant_quota_age_seconds{job="piler", instance="master:3000", role="master", tenant="t1"}'
+        values: '300x20 360+60x130'
+      - series: 'piler_tenant_quota_age_seconds{job="piler", instance="master:3000", role="master", tenant="t2"}'
+        values: '300x150'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: PilerTenantQuotaUsageStale
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: PilerTenantQuotaUsageStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+            exp_annotations:
+              summary: "The quota usage of 1 tenants is over an hour old"
+              description: "The master couldn't collect the usage of 1 tenants from every worker for over an hour: the quota metrics and alerts have their last complete usage, the quota dashboard a lower bound. Check that the master reaches every worker's piler-ui, and the master's log ('Failed to fetch quota from workers')."

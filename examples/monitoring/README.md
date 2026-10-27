@@ -15,7 +15,7 @@ Grafana Cloud is one option, not a requirement: the metrics, the alert
 conditions and the dashboard queries below work in any Prometheus-compatible
 system, and the table of alerts translates to other platforms.
 
-Requires piler-ee 2.2.6 or later for the tenant and pipeline metrics and
+Requires piler-ee 2.2.6 or later for the tenant, quota and pipeline metrics and
 the `X-Forwarded-For` handling described below.
 
 ## What to scrape
@@ -23,7 +23,7 @@ the `X-Forwarded-For` handling described below.
 | Deployment | Targets |
 |---|---|
 | Single node | piler-ui (port 3000) |
-| Multi-node | The master's piler-ui (its own process, database and HTTP metrics) and **every worker's piler-ui** (port 3000 on the private network): the tenant metrics come from the workers, where the emails and indexes are |
+| Multi-node | The master's piler-ui (its own process, database and HTTP metrics, and the quotas) and **every worker's piler-ui** (port 3000 on the private network): the tenant metrics come from the workers, where the emails and indexes are |
 
 Label the targets with `role` (`single`, `master`, `worker`), the alert
 rules use it.
@@ -66,6 +66,26 @@ deployment has a series per tenant and worker: sum them by `tenant`.
 | `piler_tenant_metrics_last_success_timestamp_seconds` | Unix time of the last collection in which every query succeeded |
 
 The size and stored bytes are what a hoster bills and plans capacity by.
+
+### Quotas (multi-tenant)
+
+From the quota snapshot the master collects every `QUOTA_SNAPSHOT_INTERVAL`
+(15 minutes): on the master's piler-ui (the leader's, and with several
+masters every master serves the same values), or a single node's. Not on
+the workers, they have only their share of the usage.
+
+| Metric | Meaning |
+|---|---|
+| `piler_tenant_quota_used{tenant,quota}` | The tenant's usage: `quota="storage"` in bytes, `"emails"`, `"users"` (active users: received email in the last 90 days) |
+| `piler_tenant_quota_limit{tenant,quota}` | The tenant's quota; no series for a quota not set (unlimited) |
+| `piler_tenant_quota_age_seconds{tenant}` | Age of the tenant's usage |
+| `piler_quota_snapshot_age_seconds` | Age of the last snapshot |
+
+When a worker doesn't answer the master, the usage of the others is too
+low: the gauges keep the tenant's last usage collected from every worker,
+and its age grows. These values don't expire after 5 minutes: when the
+snapshot stops, the ages grow. A tenant whose usage was never collected
+completely has no series.
 
 ### Archiving pipeline
 
@@ -127,6 +147,10 @@ The rules in [piler-alerts.yaml](prometheus/piler-alerts.yaml):
 | `PilerS3UploadErrors` | s3uploader couldn't upload files in the last 10 minutes | The S3 setup broke (bucket, policy, credentials): the archive can't read these emails |
 | `PilerS3UploadBacklog` | The oldest file waits for the upload for over an hour | S3 is unreachable or too slow; until the upload the email is only on the local disk |
 | `PilerS3UploaderMetricsMissing` | s3uploader wrote metrics in the last day, but none for 15 minutes | s3uploader doesn't run, or can't reach Redis |
+| `PilerTenantQuotaExceeded` | A tenant is over a quota for an hour | Raise the quota or bill the overage |
+| `PilerTenantQuotaNearLimit` | A tenant uses over 90% of a quota for an hour (info) | The tenant's own warning thresholds are in its quota emails |
+| `PilerQuotaSnapshotStale` | The quota snapshot is over an hour old | The master's snapshot job fails: the quota dashboard, the emails and these metrics are stale |
+| `PilerTenantQuotaUsageStale` | The usage of some tenants is over an hour old, the snapshot isn't | A worker doesn't answer the master: the quota alerts use the last complete usage |
 | `PilerDiskAlmostFull` | The store disk is 85% full | |
 | `PilerDatabaseConnectionsHigh` | Over 80% of MariaDB's connections in use | |
 | `PilerHTTPErrors` | Over 5% of the requests end with 5xx | |

@@ -19,7 +19,8 @@ scrape_configs:
           role: single
 
       # A multi-node deployment: the master reports its own process,
-      # database and HTTP metrics, the workers the tenant metrics too
+      # database and HTTP metrics and the tenant quotas, the workers the
+      # tenant metrics too
       #- targets: ["master.example.internal:3000"]
       #  labels:
       #    role: master

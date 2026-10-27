@@ -146,6 +146,60 @@ groups:
           summary: "No metrics from s3uploader of {{ $labels.instance }}"
           description: "s3uploader of {{ $labels.instance }} hasn't written its metrics for 15 minutes: it doesn't run, or can't reach the Redis of REDIS_ADDR. The emails it doesn't upload are only on the local disk."
 
+      # Quotas (multi-tenant): the master (a single node: piler-ui) reports
+      # them from the quota snapshot, collected every QUOTA_SNAPSHOT_INTERVAL
+      # (15 minutes). Several masters report the same values, from the same
+      # Redis: the rules take one of them.
+
+      - alert: PilerTenantQuotaExceeded
+        # With a worker not answering, the tenant's last usage collected
+        # from every worker: a lower one would resolve the alert
+        expr: |
+          max by (job, tenant, quota) (piler_tenant_quota_used{job="piler"})
+            / max by (job, tenant, quota) (piler_tenant_quota_limit{job="piler"}) > 1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tenant {{ $labels.tenant }} is at {{ $value | humanizePercentage }} of its {{ $labels.quota }} quota"
+          description: "Tenant {{ $labels.tenant }} is over its {{ $labels.quota }} quota for an hour. Raise the quota (Admin > Tenant > Quotas), or bill the overage."
+
+      - alert: PilerTenantQuotaNearLimit
+        # A fixed 90%, the tenant's own warning threshold is only in its
+        # quota emails
+        expr: |
+          max by (job, tenant, quota) (piler_tenant_quota_used{job="piler"})
+            / max by (job, tenant, quota) (piler_tenant_quota_limit{job="piler"}) > 0.9 <= 1
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Tenant {{ $labels.tenant }} is at {{ $value | humanizePercentage }} of its {{ $labels.quota }} quota"
+          description: "Tenant {{ $labels.tenant }} uses over 90% of its {{ $labels.quota }} quota for an hour."
+
+      - alert: PilerQuotaSnapshotStale
+        expr: min by (job) (piler_quota_snapshot_age_seconds{job="piler"}) > 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The quota snapshot is {{ $value | humanizeDuration }} old"
+          description: "The master (the leader) collects the quota usage every QUOTA_SNAPSHOT_INTERVAL for the quota dashboard, quota/all, the quota emails and these metrics. It hasn't succeeded for over an hour: see the master's log ('Quota snapshot failed')."
+
+      - alert: PilerTenantQuotaUsageStale
+        # A worker doesn't answer the master: the quota metrics have the
+        # tenants' last complete usage. Not while the snapshot itself is
+        # stale, PilerQuotaSnapshotStale covers that.
+        expr: |
+          count by (job) (min by (job, tenant) (piler_tenant_quota_age_seconds{job="piler"}) > 3600)
+            unless on (job) (min by (job) (piler_quota_snapshot_age_seconds{job="piler"}) > 3600)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The quota usage of {{ $value }} tenants is over an hour old"
+          description: "The master couldn't collect the usage of {{ $value }} tenants from every worker for over an hour: the quota metrics and alerts have their last complete usage, the quota dashboard a lower bound. Check that the master reaches every worker's piler-ui, and the master's log ('Failed to fetch quota from workers')."
+
       - alert: PilerDiskAlmostFull
         expr: disk_used_bytes{job="piler"} / disk_size_bytes{job="piler"} > 0.85
         for: 15m
