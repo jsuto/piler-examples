@@ -15,7 +15,7 @@ Grafana Cloud is one option, not a requirement: the metrics, the alert
 conditions and the dashboard queries below work in any Prometheus-compatible
 system, and the table of alerts translates to other platforms.
 
-Requires piler-ee 2.2.6 or later for the tenant, quota and pipeline metrics and
+Requires piler-ee 2.2.5 or later for the tenant, quota and pipeline metrics and
 the `X-Forwarded-For` handling described below.
 
 ## What to scrape
