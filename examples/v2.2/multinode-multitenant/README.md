@@ -80,10 +80,53 @@ enabled.
 - **S3 storage** with an access key. piler stores the emails of a tenant
   in the bucket `S3_BUCKET_PREFIX` + tenant id. **s3uploader doesn't create
   buckets**: create the bucket before the tenant's first email (see
-  [Adding a tenant](#adding-a-tenant)).
+  [Adding a tenant](#adding-a-tenant)). No S3 service yet? See
+  [S3 storage](#s3-storage).
 - **Secrets that must match**: the MariaDB `piler` password (the workers
   log in to the master's database with it), `JWT_SECRET` (the master passes
   the user's token to the workers) and `IMAP_ENCRYPT_KEY`.
+
+## S3 storage
+
+Any S3-compatible service works: your cloud provider's, a storage
+appliance, or one you run yourself. MinIO no longer publishes images or
+maintains its community edition. Two self-hosted options we test piler
+with:
+
+| | [RustFS](https://rustfs.com/) | [Versity S3 Gateway](https://www.versity.com/products/versitygw/) |
+|---|---|---|
+| What it is | An object store: its own data format, erasure coding, healing | An S3 API over a directory of a filesystem, every object a plain file |
+| Durability | Its own, across disks or nodes | The filesystem's (ZFS, RAID, your backups) |
+| Backup | With S3 tools (replication, `mc mirror`) | Your existing filesystem backup |
+| Object lock, versioning | Built in | Versioning experimental (`--versioning-dir`), metadata in extended attributes |
+| Web console | Yes | No |
+| Maturity | 1.0 since September 2026, a MinIO replacement | Years of releases, backed by Versity Software |
+| License | Apache 2.0 | Apache 2.0 |
+
+Pick RustFS for a standalone S3 server, the closest to MinIO. Pick the
+Versity gateway when you already have a filesystem you trust and back up.
+Both have amd64 and arm64 images.
+
+The worker's compose file has an optional RustFS service (the `s3`
+profile), for a test or for a worker that keeps its emails in its own
+storage:
+
+```
+docker volume create piler_rustfs
+docker compose --profile s3 up -d
+```
+
+with `S3_ENDPOINT=rustfs:9000` and `S3_USE_SSL=false` in `.env`; the
+access key is `S3_ACCESS_KEY` / `S3_SECRET_KEY`. Create the buckets from a
+host on the private network, e.g. with the MinIO client:
+
+```
+mc alias set worker0 http://worker0.example.internal:9000 <access key> <secret key>
+mc mb worker0/<S3_BUCKET_PREFIX><tenant id>
+```
+
+For many workers, run the S3 service on its own hosts instead, and point
+every worker to it.
 
 ## Set up the master
 
@@ -223,7 +266,5 @@ the same for `s3uploader`), move what's there back for processing, then
 ## Notes
 
 - Don't change the default MariaDB database (`aaaaa`), it's intentional.
-- For a local test of S3 storage, `sutoj/minio:RELEASE.2025-07-23` works
-  (MinIO no longer publishes images); in production use your S3 service.
 - To make the MariaDB data encrypted at rest, see `ENCRYPTED_SQL` and the
   [multiple-nodes example](../../archive/docker/multiple-nodes-with-multitenancy/install.sh).

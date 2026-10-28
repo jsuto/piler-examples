@@ -200,6 +200,23 @@ services:
     depends_on:
       - mysql
 
+  # S3 storage on this host (optional, `docker compose --profile s3 up -d`):
+  # for a test, or when this worker keeps its emails in its own storage.
+  # Set S3_ENDPOINT=rustfs:9000, S3_USE_SSL=false and the access key in .env
+  rustfs:
+    <<: *defaults
+    image: rustfs/rustfs:${RUSTFS_VERSION}
+    profiles:
+      - s3
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY}
+    volumes:
+      - piler_rustfs:/data
+    ports:
+      # For creating the buckets, on the private network only
+      - "${PRIVATE_IP}:9000:9000"
+
 volumes:
   piler_db:
     external: true
@@ -218,6 +235,8 @@ volumes:
   piler_error:
     external: true
   piler_export: {}
+  piler_rustfs:
+    external: true
 
 networks:
   piler:
