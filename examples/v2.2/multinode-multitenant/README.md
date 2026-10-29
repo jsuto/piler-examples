@@ -226,8 +226,18 @@ docker compose exec s3uploader sh -c 'mv /var/piler/error/*.m /var/piler/s3/0/'
    ```
 
 4. Recreate the distributed tables of every tenant on the master, so they
-   query the new worker too. Only the distributed tables: `_audit` and
-   `_cat1` hold data.
+   query the new worker too. From 2.2.5:
+
+   ```
+   docker compose exec piler /usr/libexec/piler/recreate-distributed-tables.sh manticore --all
+   ```
+
+   It recreates only the distributed tables (`_audit` and `_cat1` hold
+   data), refuses a table that isn't distributed, and skips a tenant not
+   created on the master yet. `--dry-run` prints the statements. Searches
+   fail for a moment while a tenant's tables are recreated.
+
+   Before 2.2.5:
 
    ```
    docker compose exec piler sh -c '
