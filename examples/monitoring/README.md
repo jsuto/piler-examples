@@ -213,7 +213,9 @@ Alertmanager as usual.
 
 The dashboard shows the email received per tenant, the archive and index
 size per tenant, a table of the current values per tenant (for billing),
-and the health of every piler-ui.
+the archiving pipeline of every node (emails processed by result, the
+queue, the error directory, archiving and S3 upload errors, the S3 upload
+backlog; from 2.2.5), and the health of every piler-ui.
 
 ## Other platforms
 

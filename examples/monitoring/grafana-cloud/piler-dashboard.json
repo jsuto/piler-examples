@@ -15,7 +15,7 @@
   ],
   "timezone": "",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "time": {
     "from": "now-24h",
     "to": "now"
@@ -343,13 +343,388 @@
       "options": {}
     },
     {
+      "id": 16,
+      "type": "row",
+      "title": "Archiving pipeline",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
+      "title": "Emails processed per minute",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (instance, result) (rate(piler_archive_messages_total{job=\"piler\", instance=~\"$instance\"}[5m])) * 60",
+          "legendFormat": "{{instance}} {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Emails the piler daemon processed, by result: archived, duplicate, discarded (an exclusion rule), error (moved to the error directory)."
+    },
+    {
+      "id": 18,
+      "title": "Emails waiting for the piler daemon",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "piler_queue_files{job=\"piler\", instance=~\"$instance\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Emails in the worker directories (/var/piler/tmp). Normally near 0; a growing line means the daemon is slower than the email arrives, or stopped."
+    },
+    {
+      "id": 19,
+      "title": "Error directory",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "piler_error_dir_files{job=\"piler\", instance=~\"$instance\"}",
+          "legendFormat": "{{instance}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "description": "Files in the error directory: emails not archived, or not uploaded to S3. They need a fix and a move back for processing. The count stops at 100000."
+    },
+    {
+      "id": 20,
+      "title": "Archiving errors, last hour",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 34,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (instance) (increase(piler_archive_messages_total{job=\"piler\", instance=~\"$instance\", result=\"error\"}[1h]))",
+          "legendFormat": "{{instance}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "description": "Emails the piler daemon couldn't archive in the last hour. Its log has the reason ('status=error')."
+    },
+    {
+      "id": 21,
+      "title": "Oldest file waiting for S3",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "piler_s3_queue_oldest_age_seconds{job=\"piler\", instance=~\"$instance\"}",
+          "legendFormat": "{{instance}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 600
+              },
+              {
+                "color": "red",
+                "value": 3600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "description": "Age of the oldest file in /var/piler/s3, normally seconds. Until the upload the email is only on the local disk, and can't be opened. No value: no s3uploader on the node."
+    },
+    {
+      "id": 22,
+      "title": "S3 upload errors, last hour",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 34,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (instance) (increase(piler_s3_uploads_total{job=\"piler\", instance=~\"$instance\", result=\"error\"}[1h]))",
+          "legendFormat": "{{instance}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "description": "Files s3uploader couldn't upload after the retries in the last hour. Its log has the S3 error (e.g. NoSuchBucket, AccessDenied)."
+    },
+    {
+      "id": 23,
+      "title": "S3 uploads per minute",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (instance, result) (rate(piler_s3_uploads_total{job=\"piler\", instance=~\"$instance\"}[5m])) * 60",
+          "legendFormat": "{{instance}} {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Files s3uploader uploaded, and failed to upload after the retries."
+    },
+    {
+      "id": 24,
+      "title": "S3 upload queue",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 40,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "piler_s3_queue_bytes{job=\"piler\", instance=~\"$instance\"}",
+          "legendFormat": "{{instance}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Bytes in /var/piler/s3 waiting for the upload. The number of files is piler_s3_queue_files."
+    },
+    {
       "id": 7,
       "type": "row",
       "title": "piler-ui",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 48,
         "w": 24,
         "h": 1
       },
@@ -365,7 +740,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 49,
         "w": 6,
         "h": 6
       },
@@ -434,7 +809,7 @@
       },
       "gridPos": {
         "x": 6,
-        "y": 26,
+        "y": 49,
         "w": 6,
         "h": 6
       },
@@ -488,7 +863,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 26,
+        "y": 49,
         "w": 6,
         "h": 6
       },
@@ -542,7 +917,7 @@
       },
       "gridPos": {
         "x": 18,
-        "y": 26,
+        "y": 49,
         "w": 6,
         "h": 6
       },
@@ -595,7 +970,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 55,
         "w": 12,
         "h": 8
       },
@@ -628,7 +1003,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 32,
+        "y": 55,
         "w": 12,
         "h": 8
       },
@@ -661,7 +1036,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 63,
         "w": 12,
         "h": 8
       },
@@ -695,7 +1070,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 40,
+        "y": 63,
         "w": 12,
         "h": 8
       },
