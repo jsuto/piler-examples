@@ -38,6 +38,15 @@ services:
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
       - piler_db:/var/lib/mysql
+    healthcheck:
+      # Succeeds when the server answers, without a password ("Access denied"
+      # is an answer too). Over TCP: the server of the first start, which
+      # creates the database, doesn't listen on the network.
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "60s"
+      retries: 5
 
   manticore:
     <<: *defaults
@@ -48,6 +57,12 @@ services:
     ports:
       # The distributed indexes of the master query this port
       - "${PRIVATE_IP}:9312:9312"
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 9306 -e 'SHOW STATUS' >/dev/null"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "60s"
+      retries: 5
 
   cache:
     <<: *defaults
@@ -58,6 +73,11 @@ services:
       - SETUID
       - SETGID
     command: valkey-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: "10s"
+      timeout: "5s"
+      retries: 5
 
   # Extracts the text of the attachments for the index
   tika:
@@ -65,6 +85,13 @@ services:
     image: apache/tika:3.2.3.0
     cap_drop:
       - ALL
+    healthcheck:
+      # The image has no curl or wget
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9998"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "60s"
+      retries: 5
 
   piler-smtp:
     <<: *defaults
@@ -126,11 +153,23 @@ services:
       resources:
         limits:
           memory: 2048M
+    healthcheck:
+      # The entrypoint starts the daemon after the database is there and the
+      # default tenant is created
+      test: ["CMD", "pidof", "piler"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "120s"
+      retries: 3
     depends_on:
-      - mysql
-      - manticore
-      - cache
-      - tika
+      mysql:
+        condition: service_healthy
+      manticore:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      tika:
+        condition: service_started
 
   # Uploads the emails the piler daemon stages in /var/piler/s3
   s3uploader:
@@ -145,6 +184,11 @@ services:
       - piler_s3:/var/piler/s3
       - piler_error:/var/piler/error
       - ./piler.env:/var/piler/.env:ro
+    healthcheck:
+      test: ["CMD", "pidof", "s3uploader"]
+      interval: "10s"
+      timeout: "5s"
+      retries: 3
 
   # The master queries this piler-ui for the search results and emails of
   # this worker
@@ -176,11 +220,22 @@ services:
         soft: 65535
         hard: 65535
       nproc: 4096
+    healthcheck:
+      # 503 when the database, Manticore or Valkey doesn't answer
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/healthz"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "30s"
+      retries: 3
     depends_on:
-      - mysql
-      - manticore
-      - cache
-      - piler
+      mysql:
+        condition: service_healthy
+      manticore:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      piler:
+        condition: service_healthy
 
   # Smart insights, phishing detection and semantic search (optional)
   scanner:
@@ -197,8 +252,12 @@ services:
       - ./license.jwt:/etc/piler/license.jwt:ro
       - ./piler.key:/etc/piler/piler.key:ro
       - ./piler.env:/app/.env:ro
+    # Its image has a healthcheck
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
+      manticore:
+        condition: service_healthy
 
   # S3 storage on this host (optional, `docker compose --profile s3 up -d`):
   # for a test, or when this worker keeps its emails in its own storage.
@@ -216,6 +275,12 @@ services:
     ports:
       # For creating the buckets, on the private network only
       - "${PRIVATE_IP}:9000:9000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:9000/health"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "30s"
+      retries: 3
 
 volumes:
   piler_db:

@@ -116,7 +116,7 @@ storage:
 
 ```
 docker volume create piler_rustfs
-docker compose --profile s3 up -d
+docker compose --profile s3 up -d --wait
 ```
 
 with `S3_ENDPOINT=rustfs:9000` and `S3_USE_SSL=false` in `.env`; the
@@ -145,7 +145,7 @@ On the master host, in the `master/` directory:
 
    ```
    for v in piler_db piler_manticore piler_tenant piler_traefik; do docker volume create $v; done
-   docker compose up -d
+   docker compose up -d --wait
    ```
 
 ## Set up a worker
@@ -165,8 +165,11 @@ On every worker host, in a copy of the `worker/` directory:
 
    ```
    for v in piler_db piler_manticore piler_tmp piler_store piler_astore piler_s3 piler_tenant piler_error; do docker volume create $v; done
-   docker compose up -d
+   docker compose up -d --wait
    ```
+
+   `--wait` returns when every service of the node is healthy, or says
+   which one isn't (`docker compose ps` shows it later too).
 
 Start the workers before the master: at startup the master checks the
 index through the workers, and only logs a warning if it can't reach them.
@@ -264,7 +267,7 @@ and run
 
 ```
 docker compose pull
-docker compose up -d
+docker compose up -d --wait
 ```
 
 Read the [upgrade notes](https://docs.mailpiler.com/piler-ee-fiber/upgrade.html)

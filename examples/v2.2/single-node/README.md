@@ -8,8 +8,10 @@ Your license determines whether it's a no-tenant or multi-tenant deployment.
 ## Requirements
 
 - A Linux host with Docker and the docker compose plugin
-- A DNS name of the archive pointing to the host (e.g. archive.example.com),
-  and port 443 reachable from the internet: Let's Encrypt checks it
+- The hostname in your license (e.g. archive.example.com) pointing to the
+  host in DNS: piler-smtp accepts the emails sent to addresses at that
+  hostname only. Port 443 reachable from the internet: Let's Encrypt
+  checks it
 - Port 25 reachable by your mail server: it sends the emails to archive here
 - Your license file (license.jwt)
 
@@ -25,9 +27,10 @@ docker compose up -d --wait
 `--wait` returns when every service is healthy (about half a minute), or
 says which one isn't. `docker compose ps` shows their health later too.
 
-setup.sh asks for the hostname of the archive, the email address for Let's
-Encrypt, the mail relay piler sends emails through (restored emails,
-notifications) and the path of your license. It writes:
+setup.sh asks for the path of your license, the hostname of the archive
+(the one in the license), the email address for Let's Encrypt and the mail
+relay piler sends emails through (restored emails, notifications). It
+writes:
 
 - `.env`: the settings of this installation for docker compose: the
   hostnames, the database passwords, the versions of the images

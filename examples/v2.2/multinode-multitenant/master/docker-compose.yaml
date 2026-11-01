@@ -29,6 +29,15 @@ services:
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
       - piler_db:/var/lib/mysql
+    healthcheck:
+      # Succeeds when the server answers, without a password ("Access denied"
+      # is an answer too). Over TCP: the server of the first start, which
+      # creates the database, doesn't listen on the network.
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "60s"
+      retries: 5
     ports:
       # The workers copy the rules of the tenants from here
       - "${PRIVATE_IP}:3306:3306"
@@ -42,6 +51,12 @@ services:
     ports:
       # The workers copy the categories of the tenants from here (read-only)
       - "${PRIVATE_IP}:9307:9307"
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 9306 -e 'SHOW STATUS' >/dev/null"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "60s"
+      retries: 5
 
   cache:
     <<: *defaults
@@ -52,6 +67,11 @@ services:
       - SETUID
       - SETGID
     command: valkey-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: "10s"
+      timeout: "5s"
+      retries: 5
 
   # Creates the databases and the distributed indexes of new tenants
   piler:
@@ -77,10 +97,21 @@ services:
       - ./license.jwt:/etc/piler/license.jwt:ro
       - ./piler.key:/etc/piler/piler.key:ro
       - ./piler.env:/var/piler/.env:ro
+    healthcheck:
+      # The entrypoint starts the daemon after the database is there and the
+      # default tenant is created
+      test: ["CMD", "pidof", "piler"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "120s"
+      retries: 3
     depends_on:
-      - mysql
-      - manticore
-      - cache
+      mysql:
+        condition: service_healthy
+      manticore:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
 
   piler-ui:
     <<: *defaults
@@ -105,16 +136,30 @@ services:
         soft: 65535
         hard: 65535
       nproc: 4096
+    healthcheck:
+      # 503 when the database, Manticore or Valkey doesn't answer. Not the
+      # workers: a worker that's down doesn't stop the master
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/healthz"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "30s"
+      retries: 3
     depends_on:
-      - mysql
-      - manticore
-      - cache
-      - piler
+      mysql:
+        condition: service_healthy
+      manticore:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      piler:
+        condition: service_healthy
 
   traefik:
     <<: *defaults
     image: traefik:v3.7.11
     command:
+      # For the healthcheck, on port 8080 inside the container only
+      - --ping=true
       - --providers.file.filename=/etc/traefik/dynamic.yaml
       - --providers.file.watch=true
       - --entrypoints.websecure.address=:443
@@ -126,6 +171,11 @@ services:
     volumes:
       - piler_traefik:/letsencrypt
       - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: "10s"
+      timeout: "5s"
+      retries: 3
 
 volumes:
   piler_db:

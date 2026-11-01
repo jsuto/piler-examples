@@ -81,12 +81,28 @@ check_existing_installation() {
    fi
 }
 
+# The hostname in the license: piler-smtp accepts emails to addresses there only
+license_hostname() {
+   local payload
+
+   payload="$(cut -d. -f2 license.jwt | tr '_-' '/+')"
+   while (( ${#payload} % 4 )); do payload+="="; done
+   base64 -d <<< "$payload" 2>/dev/null | grep -o '"hostname":"[^"]*"' | cut -d'"' -f4 || true
+}
+
 ask_settings() {
    local host
    local hosts
+   local licensed
 
-   ask PILER_HOSTNAME "The hostname of the archive (DNS must point it to this host)"
+   licensed="$(license_hostname)"
+
+   ask PILER_HOSTNAME "The hostname of the archive (DNS must point it to this host)" "$licensed"
    valid_hostname "$PILER_HOSTNAME" || error "not a hostname: $PILER_HOSTNAME"
+
+   if [[ -n "$licensed" && "$(tr '[:upper:]' '[:lower:]' <<< "$PILER_HOSTNAME")" != "$(tr '[:upper:]' '[:lower:]' <<< "$licensed")" ]]; then
+      echo "WARNING: the license is for ${licensed}: piler-smtp accepts the emails sent to addresses @${licensed} only"
+   fi
 
    ask TENANT_HOSTNAMES "Hostnames of tenants, comma separated (multi-tenant license only, empty for none)" "" optional
    TENANT_HOSTNAMES="$(tr -d ' ' <<< "$TENANT_HOSTNAMES")"
@@ -219,6 +235,9 @@ main() {
    check_requirements
    check_existing_installation
 
+   # First: the license has the hostname of the archive
+   install_license
+
    if [[ ! -f .env ]]; then
       ask_settings
    fi
@@ -231,7 +250,6 @@ main() {
 
    write_piler_env
    create_key
-   install_license
    create_volumes
 
    # Passwords and keys: not for the other users of this host. The
