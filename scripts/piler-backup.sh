@@ -225,7 +225,7 @@ backup() {
    MYSQL_ID="$(docker compose ps -q --status running mysql)"
    PILER_ID="$(docker compose ps -q --status running piler)"
    MANTICORE_ID="$(docker compose ps -q --status running manticore)"
-   [[ -n "$MYSQL_ID" && -n "$PILER_ID" ]] || error "MariaDB and piler must be running"
+   [[ -n "$MYSQL_ID" && -n "$PILER_ID" ]] || error "MariaDB and piler aren't running in the compose project ${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}. Started from a directory of another name? Set COMPOSE_PROJECT_NAME in .env"
 
    log "Backing up ${NODE} into ${BACKUP_REPOSITORY}"
 
