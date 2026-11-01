@@ -37,6 +37,17 @@ curl -o license.pub https://download.mailpiler.com/license.pub
 dd if=/dev/urandom bs=64 count=1 of=piler.key
 ```
 
+## Create the JWT secret
+
+piler-ui signs its tokens (the REST API, the Outlook add-in) with it:
+
+```
+echo "JWT_SECRET=$(openssl rand -hex 32)" >> env
+```
+
+An installation set up without it: add it the same way, then run
+`docker compose up -d`.
+
 ## Customise files with your passwords, domain names
 
 Edit docker-compose.yaml, and perform any customisation you need, change the default passwords, etc.

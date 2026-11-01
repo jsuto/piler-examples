@@ -84,7 +84,10 @@ enabled.
   [S3 storage](#s3-storage).
 - **Secrets that must match**: the MariaDB `piler` password (the workers
   log in to the master's database with it), `JWT_SECRET` (the master passes
-  the user's token to the workers) and `IMAP_ENCRYPT_KEY`.
+  the user's token to the workers) and `IMAP_ENCRYPT_KEY`. Replace every
+  `changeme` value of the `.env` files with a random one, e.g.
+  `openssl rand -hex 32`: piler-ui warns about a `JWT_SECRET` left at the
+  example value (2.2.5).
 
 ## S3 storage
 
