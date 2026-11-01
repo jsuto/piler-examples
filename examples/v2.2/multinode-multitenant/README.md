@@ -262,16 +262,31 @@ master `piler.env`) must include the scraper's address.
 
 ## Upgrading
 
-Upgrade the workers first, then the master: set `PILER_VERSION` in `.env`
-and run
+Upgrade the workers first, one at a time, then the master. On each node,
+in its directory:
 
 ```
-docker compose pull
-docker compose up -d --wait
+piler-upgrade.sh 2.2.6
 ```
 
-Read the [upgrade notes](https://docs.mailpiler.com/piler-ee-fiber/upgrade.html)
-of the version first.
+It shows the [upgrade notes](https://docs.mailpiler.com/piler-ee-fiber/upgrade/)
+of every release since the node's version and asks before it does
+anything; on the master it asks if the workers are upgraded. Then it pulls
+the new images, dumps the node's database and copies `.env` into
+`backups/`, sets `PILER_VERSION` in `.env` (`--smtp` and `--scanner` the
+other versions of a worker), and starts the new containers and waits until
+they're healthy. Without an argument it shows the node's versions and the
+newer releases.
+
+`piler-upgrade.sh` is in `scripts/` of this repository. On a host with a
+copy of the example only, download it:
+`curl -fsSLO https://raw.githubusercontent.com/jsuto/piler-examples/master/scripts/piler-upgrade.sh && chmod +x piler-upgrade.sh`
+
+A worker with the RustFS service: put `COMPOSE_PROFILES=s3` into its
+`.env`, so every `docker compose` command (the script's too) includes it.
+
+By hand: set `PILER_VERSION` in `.env`, then `docker compose pull` and
+`docker compose up -d --wait`.
 
 A worker set up before the `piler_error` volume keeps its error directory
 in the containers, and loses it when they are recreated. Before the

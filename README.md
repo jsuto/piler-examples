@@ -8,6 +8,13 @@
   and several workers on separate hosts, emails in S3-compatible storage,
   for hosting providers and MSPs
 
+## Scripts
+
+* [piler-upgrade.sh](scripts/piler-upgrade.sh): upgrades an installation of
+  the 2.2 Docker examples (a single node, or a node of a multi-node
+  deployment): shows the upgrade notes, backs up the database, and waits
+  until the new containers are healthy
+
 ## Monitoring
 
 * [Monitoring](examples/monitoring/): piler-ui's metrics, alert rules

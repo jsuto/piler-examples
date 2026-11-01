@@ -80,14 +80,32 @@ With a multi-tenant license, each tenant has its own hostname. Add it to
 
 ## Upgrade
 
-Read the [upgrade notes](https://docs.mailpiler.com/piler-ee-fiber/upgrade.html)
-of every version since yours first, then set `PILER_VERSION` (and
-`PILER_SMTP_VERSION`, `SCANNER_VERSION` if they're new) in `.env` and run:
+Update the example first (`git pull`), a new release may need its newer
+files. Then, in this directory:
 
 ```
-docker compose pull
-docker compose up -d --wait
+../../../scripts/piler-upgrade.sh           # your versions, and the newer releases
+../../../scripts/piler-upgrade.sh 2.2.6     # upgrade piler-ee
 ```
+
+`piler-upgrade.sh` is in `scripts/` of this repository. On a host with a
+copy of the example only, download it:
+`curl -fsSLO https://raw.githubusercontent.com/jsuto/piler-examples/master/scripts/piler-upgrade.sh && chmod +x piler-upgrade.sh`
+
+It shows the [upgrade notes](https://docs.mailpiler.com/piler-ee-fiber/upgrade/)
+of every release since yours and asks before it does anything; a release
+with an upgrade step needs your confirmation that it's done. Then it pulls
+the new images, dumps the database and copies `.env` and `env` into
+`backups/`, sets the versions in `.env`, and starts the new containers and
+waits until they're healthy. If they don't get healthy, it prints how to
+go back. It doesn't downgrade.
+
+`--smtp <version>` and `--scanner <version>` upgrade piler-smtp and the
+scanner too, `--yes` doesn't ask (for a script), `--no-backup` skips the
+database dump. `backups/` isn't cleaned up: remove the old ones yourself.
+
+By hand: set `PILER_VERSION` (and `PILER_SMTP_VERSION`, `SCANNER_VERSION`)
+in `.env`, then `docker compose pull` and `docker compose up -d --wait`.
 
 The piler container adds the `participants` column to the index at its
 start (2.2.5).
