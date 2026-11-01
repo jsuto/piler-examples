@@ -14,6 +14,9 @@
   the 2.2 Docker examples (a single node, or a node of a multi-node
   deployment): shows the upgrade notes, backs up the database, and waits
   until the new containers are healthy
+* [piler-backup.sh](scripts/piler-backup.sh): daily backups of an
+  installation of the 2.2 Docker examples into a restic repository (S3,
+  SFTP, a directory), and the restore on a new host
 
 ## Monitoring
 

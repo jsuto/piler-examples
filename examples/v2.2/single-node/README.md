@@ -110,6 +110,52 @@ in `.env`, then `docker compose pull` and `docker compose up -d --wait`.
 The piler container adds the `participants` column to the index at its
 start (2.2.5).
 
+## Backup
+
+`../../../scripts/piler-backup.sh` backs up the installation into a
+[restic](https://restic.net/) repository: the databases, the search index,
+the stored emails and attachments, and this directory (`.env`, `env`,
+`piler.key`, the license). Only stock images run it, nothing to install.
+
+Set `BACKUP_REPOSITORY` in `.env` (setup.sh asks for it):
+`s3:https://host/bucket/path` (with `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY`), `sftp:user@host:/path` (with root's SSH key),
+`rest:https://host/path`, or a directory of this host (it's lost with the
+host). `BACKUP_PASSWORD` encrypts the backups, setup.sh generates it:
+**keep a copy off this host**, without it there's no restore. Then, as
+root:
+
+```
+../../../scripts/piler-backup.sh install-timer     # every day at 02:30, a systemd timer
+../../../scripts/piler-backup.sh                   # a backup now
+../../../scripts/piler-backup.sh snapshots         # the backups
+```
+
+Every backup stores only what's new since the last one. The old backups
+are removed (7 daily, 4 weekly, 12 monthly, see `BACKUP_KEEP_*`), so purged
+emails leave the backups too; on Sundays the space is freed and 5% of the
+data is read back to check it. The admin health page shows the last
+backup, once piler has the `backup_status` table.
+
+### Restore on a new host
+
+1. Install Docker and get this example (`git clone`); don't run setup.sh.
+2. In this directory, create `.env` with `BACKUP_REPOSITORY` and
+   `BACKUP_PASSWORD` (and the S3 keys).
+3. Pick a backup: `../../../scripts/piler-backup.sh snapshots`
+4. `../../../scripts/piler-backup.sh restore <id>`
+
+It restores the files of this directory (the settings, the key, the
+license, and the image versions of the backup), the databases, the emails
+and the search index, and starts piler. It restores into an installation
+without piler's volumes only, it never overwrites an archive. Then point
+the hostname to the new host. The emails archived after the backup are not
+in it: the mail server keeps sending the queued ones once the host is
+back.
+
+`../../../scripts/piler-backup.sh extract <id> <directory>` extracts the
+files of a backup without restoring them.
+
 ## Existing installation
 
 An installation set up before setup.sh had its settings in

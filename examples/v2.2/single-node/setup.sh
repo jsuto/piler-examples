@@ -115,6 +115,9 @@ ask_settings() {
 
    ask ACME_EMAIL "Email address for Let's Encrypt (certificate expiry notices)" "hostmaster@${PILER_HOSTNAME#*.}"
    [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] || error "not an email address: $ACME_EMAIL"
+
+   ask BACKUP_REPOSITORY "Backup repository: s3:https://host/bucket/piler, sftp:user@host:/path, or a directory (empty: set it later in .env)" "" optional
+   [[ -z "$BACKUP_REPOSITORY" || "$BACKUP_REPOSITORY" =~ ^[A-Za-z0-9:/@._%+=,~-]+$ ]] || error "not a restic repository: $BACKUP_REPOSITORY"
 }
 
 ask_smarthost() {
@@ -155,6 +158,20 @@ MYSQL_ROOT_PASSWORD=$(random_hex 16)
 PILER_VERSION=${PILER_VERSION_DEFAULT}
 PILER_SMTP_VERSION=${PILER_SMTP_VERSION_DEFAULT}
 SCANNER_VERSION=${SCANNER_VERSION_DEFAULT}
+
+# Backups, by scripts/piler-backup.sh of piler-examples (restic). The
+# repository: s3:https://host/bucket/path, sftp:user@host:/path,
+# rest:https://host/path, or a directory on this host (not a backup if the
+# host is lost). BACKUP_PASSWORD encrypts the backups: without it there's
+# no restore, keep a copy off this host.
+BACKUP_REPOSITORY=${BACKUP_REPOSITORY:-}
+BACKUP_PASSWORD=$(random_hex 32)
+BACKUP_KEEP_DAILY=7
+BACKUP_KEEP_WEEKLY=4
+BACKUP_KEEP_MONTHLY=12
+# For an S3 repository
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
 EOF
    )
    echo "Wrote .env"
@@ -265,7 +282,14 @@ Done. Start piler, it waits until every service is healthy:
    docker compose up -d --wait
 
 Then open https://${PILER_HOSTNAME}/ and log in as admin@local with the
-password pilerrocks, and change it. Back up piler.key, .env and env.
+password pilerrocks, and change it.
+
+Keep a copy of piler.key and .env off this host: without piler.key the
+emails can't be read, without BACKUP_PASSWORD (in .env) the backups can't.
+
+Daily backups: set BACKUP_REPOSITORY in .env (and the S3 keys), then as root
+
+   ../../../scripts/piler-backup.sh install-timer
 EOF
 }
 

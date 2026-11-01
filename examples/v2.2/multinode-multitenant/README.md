@@ -294,8 +294,23 @@ upgrade, check it's empty (`docker compose exec piler ls /var/piler/error`,
 the same for `s3uploader`), move what's there back for processing, then
 `docker volume create piler_error`.
 
+## Backup
+
+Run `scripts/piler-backup.sh` of this repository on every node, the master
+too, in the node's directory: see
+[Backup](../single-node/README.md#backup) of the single node, the settings
+in `.env` are the same. Each node is a host in the repository, so all the
+nodes can use one repository. `install-timer` takes a time
+(`install-timer 03:15`): spread the nodes.
+
+The emails a worker keeps in S3 are not in the backup: protect the buckets
+with your object storage's versioning or replication.
+
 ## Notes
 
-- Don't change the default MariaDB database (`aaaaa`), it's intentional.
+- The `aaaaa` database is a placeholder, and it's required: the MariaDB
+  image needs a database to start, but it can't be piler's. The piler
+  container creates the `piler` database (and those of the tenants) only
+  when it doesn't exist yet. Leave it as it is.
 - To make the MariaDB data encrypted at rest, see `ENCRYPTED_SQL` and the
   [multiple-nodes example](../../archive/docker/multiple-nodes-with-multitenancy/install.sh).
