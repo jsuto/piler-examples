@@ -170,6 +170,8 @@ BACKUP_PASSWORD=$(random_hex 32)
 BACKUP_KEEP_DAILY=7
 BACKUP_KEEP_WEEKLY=4
 BACKUP_KEEP_MONTHLY=12
+# The dump is put together here for the backup (empty: backups/work)
+WORKDIR=
 # For an S3 repository
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=

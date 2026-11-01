@@ -15,7 +15,9 @@
 #
 # What's in a backup: the databases (mariadb-dump), the search index
 # (manticore-backup), the stored emails and attachments, /etc/piler, the
-# error directory, and this directory (.env, env, piler.key, the license).
+# error directory, and the installation: .env, the compose files and what the
+# containers mount from this directory (env, piler.key, the license, ...).
+# Other files of this directory are not in it.
 # The settings are in .env:
 #
 #   BACKUP_REPOSITORY   the restic repository: s3:https://host/bucket/path,
@@ -29,6 +31,11 @@
 #                       keep a copy off this host
 #   BACKUP_KEEP_DAILY, BACKUP_KEEP_WEEKLY, BACKUP_KEEP_MONTHLY
 #                       how many backups are kept (7, 4, 12)
+#   WORKDIR             the database dump and the installation files are
+#                       put together here for the backup, in a directory of
+#                       its own that's removed afterwards (backups/work).
+#                       It needs room for the dump, which isn't encrypted
+#                       there
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY   for an S3 repository
 #
 # Emails in S3 storage (multi-node workers) are not in it: back up the
@@ -39,9 +46,8 @@ set -o errexit
 set -o pipefail
 
 RESTIC_IMAGE="${BACKUP_RESTIC_IMAGE:-restic/restic:0.19.1}"
-# The database dump and a copy of this directory are put together here: a
-# volume, not a directory of the host (restic can't read the files of a
-# macOS host through Docker Desktop)
+# What's in WORKDIR is copied here for restic: a volume, not a directory of
+# the host (restic can't read the files of a macOS host through Docker Desktop)
 STAGING_VOLUME="piler_backup_staging"
 LOCK="backups/.lock"
 # Inside the manticore container, on its data volume
@@ -173,10 +179,60 @@ stage() {
 
 cleanup() {
    stage 'rm -rf /staging/*' >/dev/null 2>&1 || true
+   if [[ -n "${WORK:-}" ]]; then
+      rm -rf "$WORK"
+   fi
    if [[ -n "${MANTICORE_ID:-}" ]]; then
       docker exec "$MANTICORE_ID" rm -rf "$MANTICORE_STAGING" 2>/dev/null || true
    fi
    rm -rf "$LOCK"
+}
+
+# The directory of this backup in WORKDIR, the only one that's removed:
+# WORKDIR itself may be any directory. It's named after the node, so a backup
+# that didn't finish doesn't leave its dump behind.
+prepare_workdir() {
+   WORKDIR="${WORKDIR:-$PWD/backups/work}"
+
+   [[ "$WORKDIR" == /* && "$WORKDIR" != "/" ]] || error "WORKDIR must be an absolute path: $WORKDIR"
+   case "${WORKDIR%/}/" in
+      "${BACKUP_REPOSITORY%/}"/*) error "WORKDIR can't be in the repository: $WORKDIR" ;;
+   esac
+
+   mkdir -p "$WORKDIR"
+   rm -rf "${WORKDIR%/}/piler-backup-${NODE}"
+   mkdir -m 700 "${WORKDIR%/}/piler-backup-${NODE}"
+   WORK="${WORKDIR%/}/piler-backup-${NODE}"
+   mkdir "$WORK/database" "$WORK/installation"
+}
+
+# The files of the installation: what the containers mount from its
+# directory, and the compose files. Asking the containers, as a list of files
+# would miss a custom one, and a copy of the directory would bring anything
+# that's there.
+collect_installation() {
+   local project_dir
+   local id
+
+   project_dir="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$PILER_ID")"
+   [[ -n "$project_dir" ]] || project_dir="$PWD"
+
+   {
+      for id in $(docker compose ps -aq); do
+         docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{println .Source}}{{end}}{{end}}' "$id"
+      done
+      docker inspect -f '{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$PILER_ID" | tr ',' '\n'
+   } | sed 's#^/host_mnt/#/#' | sort -u | while IFS= read -r path; do  # /host_mnt: Docker Desktop
+      case "$path" in
+         "$project_dir"/*) (cd "$project_dir" && find "./${path#"$project_dir"/}" -type f -o -type l) ;;
+      esac
+   done | COPYFILE_DISABLE=1 tar -C "$project_dir" -chf - -T - | tar -xf - -C "$WORK/installation"
+
+   # -h: the file behind a symbolic link
+   COPYFILE_DISABLE=1 tar -C "$PWD" -chf - .env docker-compose.yaml | tar -xf - -C "$WORK/installation"
+
+   # A backup without the key would look fine, but can't be read
+   [[ -f "$WORK/installation/piler.key" ]]
 }
 
 sql() {
@@ -231,17 +287,18 @@ backup() {
 
    repository_exists || create_repository
 
+   prepare_workdir
+
    # 1. The databases, first: the emails archived during the backup are in
    #    the store then, a restore doesn't miss their files
-   stage 'rm -rf /staging/database /staging/installation && mkdir -p /staging/database /staging/installation && chmod 700 /staging'
    log "Dumping the databases"
    if ! docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
         mariadb-dump -uroot --all-databases --single-transaction --routines --events --flush-privileges \
-        | stage 'cat > /staging/database/mariadb-all-databases.sql'; then
+        > "$WORK/database/mariadb-all-databases.sql"; then
       record database failed 0
       error "the database dump failed"
    fi
-   db_size="$(stage 'wc -c < /staging/database/mariadb-all-databases.sql' | tr -d ' ')"
+   db_size="$(wc -c < "$WORK/database/mariadb-all-databases.sql" | tr -d ' ')"
    if [[ "$db_size" -lt 1000 ]]; then
       record database failed "$db_size"
       error "the database dump is empty"
@@ -250,8 +307,8 @@ backup() {
    # 2. The search index, consistent while Manticore runs
    if [[ -n "$MANTICORE_ID" ]]; then
       log "Backing up the search index"
-      if docker exec -e TELEMETRY=0 "$MANTICORE_ID" sh -c "rm -rf $MANTICORE_STAGING && mkdir -p $MANTICORE_STAGING && manticore-backup --config=/etc/manticoresearch/manticore.conf.sh --backup-dir=$MANTICORE_STAGING" 2>&1 \
-           | stage 'cat > /staging/database/manticore-backup.log'; then
+      if docker exec -e TELEMETRY=0 "$MANTICORE_ID" sh -c "rm -rf $MANTICORE_STAGING && mkdir -p $MANTICORE_STAGING && manticore-backup --config=/etc/manticoresearch/manticore.conf.sh --backup-dir=$MANTICORE_STAGING" \
+           > "$WORK/database/manticore-backup.log" 2>&1; then
          manticore_size="$(docker exec "$MANTICORE_ID" du -sb "$MANTICORE_STAGING" | cut -f1)"
       else
          manticore_ok=0
@@ -263,16 +320,21 @@ backup() {
    fi
 
    # 3. Everything into one snapshot
-   COPYFILE_DISABLE=1 tar -C "$PWD" --exclude ./backups -cf - . | stage 'tar -xf - -C /staging/installation' \
-      || error "couldn't copy this directory for the backup"
+   log "Collecting the files of the installation"
+   if ! collect_installation; then
+      record email_store failed 0
+      error "couldn't collect the files of the installation, or no piler.key among them"
+   fi
+   stage 'rm -rf /staging/* && chmod 700 /staging'
+   COPYFILE_DISABLE=1 tar -C "$WORK" -cf - . | stage 'tar -xf - -C /staging' \
+      || error "couldn't copy ${WORK} for the backup"
    paths="$(docker run --rm --volumes-from "${PILER_ID}:ro" --entrypoint sh "$RESTIC_IMAGE" -c \
       "for p in $PILER_PATHS; do if [ -d \"\$p\" ]; then printf '%s ' \"\$p\"; fi; done")"
    [[ "$manticore_ok" == 1 ]] && paths+=" $MANTICORE_STAGING"
 
    log "Writing the snapshot"
-   # /staging: the dump and this directory (without the backups of
-   # piler-upgrade.sh). The license and the key mounted into the piler
-   # container are the files of this directory.
+   # /staging: the dump and the installation. The license and the key
+   # mounted into the piler container are among the files of the installation.
    # shellcheck disable=SC2086 # paths is a list
    if out="$(restic --volumes-from "${PILER_ID}:ro" ${MANTICORE_ID:+--volumes-from "${MANTICORE_ID}:ro"} \
         -v "${STAGING_VOLUME}:/staging:ro" -- \

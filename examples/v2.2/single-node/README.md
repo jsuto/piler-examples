@@ -114,8 +114,14 @@ start (2.2.5).
 
 `../../../scripts/piler-backup.sh` backs up the installation into a
 [restic](https://restic.net/) repository: the databases, the search index,
-the stored emails and attachments, and this directory (`.env`, `env`,
-`piler.key`, the license). Only stock images run it, nothing to install.
+the stored emails and attachments, and the installation: `.env`, the compose
+files and what the containers mount from this directory (`env`, `piler.key`,
+the license, ...). Other files of this directory are not in it. Only stock
+images run it, nothing to install.
+
+`WORKDIR` in `.env` (default `backups/work`) is where the dump and these files
+are put together for the backup. It needs room for the dump, which isn't
+encrypted there until the backup removes it.
 
 Set `BACKUP_REPOSITORY` in `.env` (setup.sh asks for it):
 `s3:https://host/bucket/path` (with `AWS_ACCESS_KEY_ID` and
