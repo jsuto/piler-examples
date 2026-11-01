@@ -1,0 +1,6 @@
+# Written by setup.sh: passwords, keys and the license of this installation
+.env
+env
+license.jwt
+license.pub
+piler.key

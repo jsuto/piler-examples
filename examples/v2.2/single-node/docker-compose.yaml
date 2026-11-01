@@ -1,3 +1,7 @@
+# Every component of piler on one host. setup.sh writes the settings of this
+# installation into .env (read by docker compose) and env (read by piler,
+# piler-ui and the scanner): don't edit this file.
+
 x-networks: &networks
   networks:
     - piler
@@ -15,13 +19,25 @@ services:
       - setuid
       - setgid
     environment:
+      # A placeholder, required: the image needs a database to start, but it
+      # can't be piler's. The piler container creates the piler database (and
+      # the tenants') only when it doesn't exist yet. Leave it as it is.
       - MYSQL_DATABASE=aaaaa
       - MYSQL_USER=piler
-      - MYSQL_PASSWORD=piler123
-      - MYSQL_ROOT_PASSWORD=abcde123
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:?run setup.sh first}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:?run setup.sh first}
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     volumes:
       - piler_db:/var/lib/mysql
+    healthcheck:
+      # Succeeds when the server answers, without a password ("Access denied"
+      # is an answer too). Over TCP: the server of the first start, which
+      # creates the database, doesn't listen on the network.
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "60s"
+      retries: 5
 
   manticore:
     image: manticoresearch/manticore:25.0.0
@@ -31,6 +47,12 @@ services:
     volumes:
       - ./manticore.conf:/etc/manticoresearch/manticore.conf
       - piler_manticore:/var/lib/manticore
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 9306 -e 'SHOW STATUS' >/dev/null"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "60s"
+      retries: 5
 
   tika:
     image: apache/tika:3.2.3.0
@@ -39,6 +61,13 @@ services:
     <<: *networks
     cap_drop:
       - ALL
+    healthcheck:
+      # The image has no curl or wget
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9998"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "60s"
+      retries: 5
 
   cache:
     image: valkey/valkey:8-alpine
@@ -51,9 +80,14 @@ services:
       - SETUID
       - SETGID
     command: valkey-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: "10s"
+      timeout: "5s"
+      retries: 5
 
   piler-smtp:
-    image: sutoj/piler-smtp:1.1.7
+    image: sutoj/piler-smtp:${PILER_SMTP_VERSION:?run setup.sh first}
     container_name: smtp
     restart: unless-stopped
     init: true
@@ -77,7 +111,7 @@ services:
       retries: 3
 
   piler:
-    image: sutoj/piler-ee:2.2.5
+    image: sutoj/piler-ee:${PILER_VERSION:?run setup.sh first}
     container_name: piler
     restart: unless-stopped
     <<: *networks
@@ -85,9 +119,10 @@ services:
     environment:
       - MYSQL_HOSTNAME=mysql
       - MYSQL_USER=piler
-      - MYSQL_PASSWORD=piler123
-      - MYSQL_ROOT_PASSWORD=abcde123
-      - PILER_HOSTNAME=archive.example.com
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      # The address of the archive, the first start writes it into the database
+      - PILER_HOSTNAME=${PILER_HOSTNAME:?run setup.sh first}
       - CACHE_HOSTNAME=cache
       - MANTICORE_HOST=manticore
       - MULTINODES=0
@@ -111,14 +146,26 @@ services:
           memory: 1024M
         limits:
           memory: 2048M
+    healthcheck:
+      # The entrypoint starts the daemon after the database is there and the
+      # default tenant is created
+      test: ["CMD", "pidof", "piler"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "120s"
+      retries: 3
     depends_on:
-      - "cache"
-      - "mysql"
-      - "manticore"
-      - "tika"
+      mysql:
+        condition: service_healthy
+      manticore:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      tika:
+        condition: service_started
 
   piler-ui:
-    image: sutoj/piler-ui:2.2.5
+    image: sutoj/piler-ui:${PILER_VERSION}
     container_name: piler-ui
     restart: unless-stopped
     init: true
@@ -141,15 +188,27 @@ services:
         soft: 65535
         hard: 65535
       nproc: 4096
+    healthcheck:
+      # 503 when the database, Manticore or Valkey doesn't answer
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/healthz"]
+      interval: "10s"
+      timeout: "5s"
+      start_period: "30s"
+      retries: 3
     depends_on:
-      - "cache"
-      - "mysql"
-      - "manticore"
-      - "piler"
+      mysql:
+        condition: service_healthy
+      manticore:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      piler:
+        condition: service_healthy
 
   scanner:
-    image: sutoj/scanner:1.3.1
+    image: sutoj/scanner:${SCANNER_VERSION:?run setup.sh first}
     container_name: scanner
+    restart: unless-stopped
     init: true
     user: "2001:1001"
     <<: *networks
@@ -159,30 +218,41 @@ services:
       - ./license.jwt:/etc/piler/license.jwt:ro
       - ./piler.key:/etc/piler/piler.key:ro
       - ./env:/app/.env
+    # Its image has a healthcheck
     depends_on:
-      - "mysql"
+      mysql:
+        condition: service_healthy
+      manticore:
+        condition: service_healthy
 
   traefik:
     image: traefik:v3.7.11
     container_name: traefik
     restart: unless-stopped
     <<: *networks
+    environment:
+      # traefik-dynamic.yaml makes a router (and a certificate) of each
+      - PILER_HOSTNAME=${PILER_HOSTNAME}
+      - TENANT_HOSTNAMES=${TENANT_HOSTNAMES:-}
     command:
-      - --api.dashboard=true
-      - --api.insecure=false
+      # For the healthcheck, on port 8080 inside the container only
+      - --ping=true
       - --providers.file.filename=/etc/traefik/dynamic.yaml
       - --providers.file.watch=true
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
-      - --certificatesresolvers.letsencrypt.acme.email=your-email@example.com
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?run setup.sh first}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
     ports:
       - "443:443"
     volumes:
       - piler_traefik:/letsencrypt
       - ./traefik-dynamic.yaml:/etc/traefik/dynamic.yaml:ro
-    labels:
-      - "traefik.enable=true"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: "10s"
+      timeout: "5s"
+      retries: 3
 
 volumes:
   piler_db:

@@ -1,20 +1,21 @@
+# A router, and a Let's Encrypt certificate, for PILER_HOSTNAME and each of
+# TENANT_HOSTNAMES (comma separated), both in .env. Don't edit this file:
+# change .env, then run docker compose up -d.
+
 http:
   routers:
-    piler-ui:
-      rule: "Host(`archive.example.com`)"
+{{- $hosts := splitList "," (printf "%s,%s" (env "PILER_HOSTNAME") (env "TENANT_HOSTNAMES")) }}
+{{- range $i, $host := $hosts }}
+{{- if trim $host }}
+    piler-ui-{{ $i }}:
+      rule: "Host(`{{ trim $host }}`)"
       entryPoints:
         - websecure
       service: piler-ui
       tls:
         certResolver: letsencrypt
-
-    traefik-dashboard:
-      rule: "Host(`traefik.archive.example.com`)"
-      entryPoints:
-        - websecure
-      service: api@internal
-      tls:
-        certResolver: letsencrypt
+{{- end }}
+{{- end }}
 
   services:
     piler-ui:
