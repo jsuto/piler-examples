@@ -20,8 +20,11 @@
 #
 #   BACKUP_REPOSITORY   the restic repository: s3:https://host/bucket/path,
 #                       sftp:user@host:/path, rest:https://host/path, or a
-#                       directory on this host (not a backup if the host is
-#                       lost)
+#                       directory: an absolute path, outside this directory,
+#                       on another disk (not a backup if the host is lost).
+#                       A directory's repository isn't created by itself, a
+#                       disk that isn't mounted would get a new one: for the
+#                       first backup run BACKUP_INIT=1 piler-backup.sh
 #   BACKUP_PASSWORD     encrypts the backup: without it there's no restore,
 #                       keep a copy off this host
 #   BACKUP_KEEP_DAILY, BACKUP_KEEP_WEEKLY, BACKUP_KEEP_MONTHLY
@@ -70,8 +73,54 @@ load_settings() {
    [[ -n "${BACKUP_REPOSITORY:-}" ]] || error "BACKUP_REPOSITORY is not set in .env, see the top of $0"
    [[ -n "${BACKUP_PASSWORD:-}" ]] || error "BACKUP_PASSWORD is not set in .env, e.g. echo \"BACKUP_PASSWORD=\$(openssl rand -hex 32)\" >> .env, and keep a copy off this host"
 
+   case "$BACKUP_REPOSITORY" in
+      /*|s3:*|sftp:*|rest:*) ;;
+      *) error "BACKUP_REPOSITORY must be s3:..., sftp:..., rest:... or an absolute path: $BACKUP_REPOSITORY" ;;
+   esac
+
    # The name of this node in the repository: snapshots are kept per node
    NODE="${WORKER_NAME:-${PILER_HOSTNAME:-$(hostname)}}"
+}
+
+# This directory goes into every backup: a repository in it would be backed
+# up into itself, and grow with every backup
+check_outside_installation() {
+   local dir="${BACKUP_REPOSITORY%/}"
+   local rest=""
+
+   [[ "$BACKUP_REPOSITORY" == /* ]] || return 0
+
+   # The path may not exist yet, resolve what does
+   while [[ ! -d "$dir" ]]; do
+      rest="/$(basename "$dir")${rest}"
+      dir="$(dirname "$dir")"
+   done
+
+   case "$(cd "$dir" && pwd -P)${rest}/" in
+      "$(pwd -P)"/*) error "the repository ${BACKUP_REPOSITORY} is in the directory of the installation, which is backed up: move it out" ;;
+   esac
+}
+
+repository_exists() {
+   [[ "$BACKUP_REPOSITORY" != /* || -d "$BACKUP_REPOSITORY" ]] && restic -- cat config >/dev/null 2>&1
+}
+
+# A directory only with BACKUP_INIT=1: without its disk, the path is on the
+# disk of this host, and the backups would go there unnoticed
+create_repository() {
+   if [[ "$BACKUP_REPOSITORY" == /* ]]; then
+      if [[ -z "${BACKUP_INIT:-}" ]]; then
+         record email_store failed 0
+         error "no repository in ${BACKUP_REPOSITORY}. Is its disk mounted? A new repository: BACKUP_INIT=1 $0"
+      fi
+      if [[ -n "$(ls -A "$BACKUP_REPOSITORY" 2>/dev/null)" ]]; then
+         error "${BACKUP_REPOSITORY} has files, but no repository: use an empty directory"
+      fi
+      mkdir -p "$BACKUP_REPOSITORY"
+   fi
+
+   log "Creating the repository"
+   restic -- init >/dev/null || error "couldn't create the repository ${BACKUP_REPOSITORY}"
 }
 
 # restic in a container: restic [docker run options --] restic arguments
@@ -84,7 +133,8 @@ restic() {
 
    # A local repository is mounted at the same path
    if [[ "$BACKUP_REPOSITORY" == /* ]]; then
-      mkdir -p "$BACKUP_REPOSITORY"
+      # Docker would create it
+      [[ -d "$BACKUP_REPOSITORY" ]] || error "no repository in ${BACKUP_REPOSITORY}. Is its disk mounted?"
       repo_mount=(-v "${BACKUP_REPOSITORY}:${BACKUP_REPOSITORY}")
    elif [[ "$BACKUP_REPOSITORY" == sftp:* ]]; then
       repo_mount=(-v "${HOME}/.ssh:/root/.ssh:ro")
@@ -168,6 +218,7 @@ backup() {
    local rc
 
    load_settings
+   check_outside_installation
    take_lock
    trap cleanup EXIT
 
@@ -178,11 +229,7 @@ backup() {
 
    log "Backing up ${NODE} into ${BACKUP_REPOSITORY}"
 
-   # A new repository: create it
-   if ! restic -- cat config >/dev/null 2>&1; then
-      log "Creating the repository"
-      restic -- init >/dev/null || error "couldn't create the repository ${BACKUP_REPOSITORY}"
-   fi
+   repository_exists || create_repository
 
    # 1. The databases, first: the emails archived during the backup are in
    #    the store then, a restore doesn't miss their files
@@ -286,6 +333,10 @@ install_timer() {
 
    load_settings
    [[ "$at" =~ ^[0-2][0-9]:[0-5][0-9]$ ]] || error "not a time: $at (HH:MM)"
+   check_outside_installation
+   if [[ "$BACKUP_REPOSITORY" == /* ]] && ! repository_exists; then
+      echo "WARNING: no repository in ${BACKUP_REPOSITORY} yet, the backups will fail. Create it: BACKUP_INIT=1 $0"
+   fi
    script="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
    if [[ "$(id -u)" != 0 || ! -d /run/systemd/system ]]; then

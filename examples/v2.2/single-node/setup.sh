@@ -117,7 +117,8 @@ ask_settings() {
    [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] || error "not an email address: $ACME_EMAIL"
 
    ask BACKUP_REPOSITORY "Backup repository: s3:https://host/bucket/piler, sftp:user@host:/path, or a directory (empty: set it later in .env)" "" optional
-   [[ -z "$BACKUP_REPOSITORY" || "$BACKUP_REPOSITORY" =~ ^[A-Za-z0-9:/@._%+=,~-]+$ ]] || error "not a restic repository: $BACKUP_REPOSITORY"
+   [[ -z "$BACKUP_REPOSITORY" || "$BACKUP_REPOSITORY" =~ ^(/|s3:|sftp:|rest:)[A-Za-z0-9:/@._%+=,~-]+$ ]] || error "not a restic repository: $BACKUP_REPOSITORY"
+   [[ "$BACKUP_REPOSITORY" != "$PWD"/* ]] || error "the repository can't be in this directory, which is backed up: $BACKUP_REPOSITORY"
 }
 
 ask_smarthost() {
@@ -290,6 +291,9 @@ emails can't be read, without BACKUP_PASSWORD (in .env) the backups can't.
 Daily backups: set BACKUP_REPOSITORY in .env (and the S3 keys), then as root
 
    ../../../scripts/piler-backup.sh install-timer
+
+A directory as the repository: run BACKUP_INIT=1 ../../../scripts/piler-backup.sh
+once first.
 EOF
 }
 

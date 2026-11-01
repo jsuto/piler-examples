@@ -120,7 +120,8 @@ the stored emails and attachments, and this directory (`.env`, `env`,
 Set `BACKUP_REPOSITORY` in `.env` (setup.sh asks for it):
 `s3:https://host/bucket/path` (with `AWS_ACCESS_KEY_ID` and
 `AWS_SECRET_ACCESS_KEY`), `sftp:user@host:/path` (with root's SSH key),
-`rest:https://host/path`, or a directory of this host (it's lost with the
+`rest:https://host/path`, or a directory: an absolute path outside this
+directory, on another disk (a directory on this host's disk is lost with the
 host). `BACKUP_PASSWORD` encrypts the backups, setup.sh generates it:
 **keep a copy off this host**, without it there's no restore. Then, as
 root:
@@ -130,6 +131,10 @@ root:
 ../../../scripts/piler-backup.sh                   # a backup now
 ../../../scripts/piler-backup.sh snapshots         # the backups
 ```
+
+With a directory, create the repository first, with
+`BACKUP_INIT=1 ../../../scripts/piler-backup.sh`. Later backups don't create
+one: if the disk isn't mounted, they fail instead of filling this host's disk.
 
 Every backup stores only what's new since the last one. The old backups
 are removed (7 daily, 4 weekly, 12 monthly, see `BACKUP_KEEP_*`), so purged
