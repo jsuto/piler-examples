@@ -113,6 +113,20 @@ count stops at 100000: past that the gauge stays at 100000. The rate of
 the errors comes from the counters, not from the directory: the alert fires
 at the first failed email.
 
+### Backups
+
+Collected every minute, on every node, the master too, from the node's
+`backup_status` table (migration 030), which
+[piler-backup.sh](../../scripts/piler-backup.sh) writes after every backup.
+Another backup system can write it too. `type` is `database`, `manticore` or
+`email_store`. A type without a backup has no metrics.
+
+| Metric | Meaning |
+|---|---|
+| `piler_backup_last_timestamp_seconds{type}` | Unix time of the last backup, failed or not |
+| `piler_backup_failed{type}` | 1 if the last backup failed |
+| `piler_backup_verification_failed{type}` | 1 if the last check of the backups failed. piler-backup.sh checks them on Sundays |
+
 ### piler-ui, database, cache
 
 | Metric | Meaning |
@@ -151,6 +165,10 @@ The rules in [piler-alerts.yaml](prometheus/piler-alerts.yaml):
 | `PilerTenantQuotaNearLimit` | A tenant uses over 90% of a quota for an hour (info) | The tenant's own warning thresholds are in its quota emails |
 | `PilerQuotaSnapshotStale` | The quota snapshot is over an hour old | The master's snapshot job fails: the quota dashboard, the emails and these metrics are stale |
 | `PilerTenantQuotaUsageStale` | The usage of some tenants is over an hour old, the snapshot isn't | A worker doesn't answer the master: the quota alerts use the last complete usage |
+| `PilerBackupFailed` | A node's last backup failed | The admin health page of a multi-node master doesn't show the workers' backups |
+| `PilerBackupTooOld` | A node's last backup is over 48 hours old | The backup doesn't run at all, so it can't report a failure |
+| `PilerBackupVerificationFailed` | The last check of the backups failed | A restore may not work |
+| `PilerBackupMetricsMissing` | A node answers, but has no backup recorded for an hour | Never backed up, or no migration 030. Remove this rule if your backup system doesn't write `backup_status` |
 | `PilerDiskAlmostFull` | The store disk is 85% full | |
 | `PilerDatabaseConnectionsHigh` | Over 80% of MariaDB's connections in use | |
 | `PilerHTTPErrors` | Over 5% of the requests end with 5xx | |

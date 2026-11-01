@@ -405,3 +405,91 @@ tests:
             exp_annotations:
               summary: "The quota usage of 1 tenants is over an hour old"
               description: "The master couldn't collect the usage of 1 tenants from every worker for over an hour: the quota metrics and alerts have their last complete usage, the quota dashboard a lower bound. Check that the master reaches every worker's piler-ui, and the master's log ('Failed to fetch quota from workers')."
+
+  - name: the last backup failed
+    interval: 1m
+    input_series:
+      - series: 'piler_backup_failed{job="piler", instance="worker0:3000", type="email_store"}'
+        values: '0x10 1x10'
+      - series: 'piler_backup_failed{job="piler", instance="worker1:3000", type="email_store"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PilerBackupFailed
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PilerBackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: piler
+              instance: worker0:3000
+              type: email_store
+            exp_annotations:
+              summary: "The last email_store backup of worker0:3000 failed"
+              description: "The last email_store backup of worker0:3000 failed. See the log of the backup, with piler-backup.sh: journalctl -u piler-backup.service"
+
+  - name: the backup stops running
+    interval: 1m
+    input_series:
+      # The last backup at the start, promtool's time starts at 0
+      - series: 'piler_backup_last_timestamp_seconds{job="piler", instance="worker0:3000", type="database"}'
+        values: '0x3000'
+    alert_rule_test:
+      - eval_time: 47h
+        alertname: PilerBackupTooOld
+        exp_alerts: []
+      - eval_time: 49h
+        alertname: PilerBackupTooOld
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: piler
+              instance: worker0:3000
+              type: database
+            exp_annotations:
+              summary: "The last database backup of worker0:3000 is 2d 1h 0m 0s old"
+              description: "No database backup was recorded on worker0:3000 for over 48 hours. The backup doesn't run: check its timer, and that the repository is reachable."
+
+  - name: the check of the repository failed
+    interval: 1m
+    input_series:
+      - series: 'piler_backup_verification_failed{job="piler", instance="worker0:3000", type="database"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PilerBackupVerificationFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: piler
+              instance: worker0:3000
+              type: database
+            exp_annotations:
+              summary: "The check of the database backup of worker0:3000 failed"
+              description: "The last check of the backup of worker0:3000 failed: the repository may be damaged, and a restore may not work. Run restic check on it."
+
+  - name: a node without a backup, the master too
+    interval: 1m
+    input_series:
+      - series: 'up{job="piler", instance="master:3000", role="master"}'
+        values: '1x120'
+      - series: 'up{job="piler", instance="worker0:3000", role="worker"}'
+        values: '1x120'
+      - series: 'piler_backup_last_timestamp_seconds{job="piler", instance="worker0:3000", type="database"}'
+        values: '1000x120'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: PilerBackupMetricsMissing
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: PilerBackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: piler
+              instance: master:3000
+              role: master
+            exp_annotations:
+              summary: "No backup recorded on master:3000"
+              description: "piler-ui of master:3000 answers, but its database has no backup: it was never backed up, or the backup_status table (migration 030) is missing."

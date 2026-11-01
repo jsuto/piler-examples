@@ -200,6 +200,47 @@ groups:
           summary: "The quota usage of {{ $value }} tenants is over an hour old"
           description: "The master couldn't collect the usage of {{ $value }} tenants from every worker for over an hour: the quota metrics and alerts have their last complete usage, the quota dashboard a lower bound. Check that the master reaches every worker's piler-ui, and the master's log ('Failed to fetch quota from workers')."
 
+      # The backups of each node, from its backup_status table: the admin
+      # health page of a multi-node master shows only its own.
+      - alert: PilerBackupFailed
+        expr: piler_backup_failed{job="piler"} == 1
+        labels:
+          severity: critical
+        annotations:
+          summary: "The last {{ $labels.type }} backup of {{ $labels.instance }} failed"
+          description: "The last {{ $labels.type }} backup of {{ $labels.instance }} failed. See the log of the backup, with piler-backup.sh: journalctl -u piler-backup.service"
+
+      - alert: PilerBackupTooOld
+        expr: time() - piler_backup_last_timestamp_seconds{job="piler"} > 48 * 3600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The last {{ $labels.type }} backup of {{ $labels.instance }} is {{ $value | humanizeDuration }} old"
+          description: "No {{ $labels.type }} backup was recorded on {{ $labels.instance }} for over 48 hours. The backup doesn't run: check its timer, and that the repository is reachable."
+
+      - alert: PilerBackupVerificationFailed
+        expr: piler_backup_verification_failed{job="piler"} == 1
+        labels:
+          severity: critical
+        annotations:
+          summary: "The check of the {{ $labels.type }} backup of {{ $labels.instance }} failed"
+          description: "The last check of the backup of {{ $labels.instance }} failed: the repository may be damaged, and a restore may not work. Run restic check on it."
+
+      - alert: PilerBackupMetricsMissing
+        # Also fires where another backup system doesn't write the
+        # backup_status table, and before migration 030: remove this rule
+        # if you don't record the backups there.
+        expr: |
+          up{job="piler"} == 1
+            unless on (instance) group by (instance) (piler_backup_last_timestamp_seconds{job="piler"})
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No backup recorded on {{ $labels.instance }}"
+          description: "piler-ui of {{ $labels.instance }} answers, but its database has no backup: it was never backed up, or the backup_status table (migration 030) is missing."
+
       - alert: PilerDiskAlmostFull
         expr: disk_used_bytes{job="piler"} / disk_size_bytes{job="piler"} > 0.85
         for: 15m
