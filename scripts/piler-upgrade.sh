@@ -15,8 +15,8 @@
 # It shows the upgrade notes of every release since yours and asks before
 # doing anything; a release with an upgrade step needs your confirmation
 # that it's done. Then it pulls the new images, dumps the database and
-# copies .env and env into backups/, runs the migrations the new version
-# adds, sets the versions in .env, starts the new containers and waits until
+# copies .env and env into backups/, runs the migrations of the new version,
+# sets the versions in .env, starts the new containers and waits until
 # they're healthy. If they don't get healthy it says how to go back. It never
 # downgrades.
 
@@ -88,11 +88,6 @@ notes_between() {
    ' <<< "$NOTES"
 }
 
-# The migration files in a directory of an image
-migration_files() {
-   docker run --rm --entrypoint sh "$1" -c "cd /usr/share/piler/migrations/$2 && ls *.sql" | sort
-}
-
 run_sql() {
    docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mariadb -uroot "$@"
 }
@@ -101,7 +96,6 @@ run_sql() {
 databases() {
    local all
    local tenant
-
    local tenants
 
    all=" $(run_sql -N -e 'SHOW DATABASES' | tr '\n' ' ')" || return 1
@@ -113,58 +107,45 @@ databases() {
    done
 }
 
-# Only the files the new image has and the old one doesn't: there's no record
-# of what ran, and the old ones are not worth running again, 001 alone may
-# rebuild the metadata table.
+# All the migrations of the new version, on every database of the node: they
+# are safe to run again (piler-ee checks it), so one skipped in an earlier
+# upgrade is run too
 run_migrations() {
-   local old_image
    local new_image
-   local old_sql
-   local new_sql
-   local old_manticore
-   local new_manticore
-   local sql_files
-   local manticore_files
+   local dir
+   local container
    local dbs
    local file
    local db
 
-   # Every step returns by hand: errexit is off under the caller's "if".
-   # A list that can't be read must not look empty, or all would be new.
-   old_image="$(docker compose config --images piler)" && [[ -n "$old_image" ]] || return 1
+   # Every step returns by hand: errexit is off under the caller's "if"
    new_image="$(PILER_VERSION="$TARGET" docker compose config --images piler)" && [[ -n "$new_image" ]] || return 1
-   old_sql="$(migration_files "$old_image" sql)" && [[ -n "$old_sql" ]] || return 1
-   new_sql="$(migration_files "$new_image" sql)" && [[ -n "$new_sql" ]] || return 1
-   old_manticore="$(migration_files "$old_image" manticore)" || return 1
-   new_manticore="$(migration_files "$new_image" manticore)" || return 1
+   dir="$(mktemp -d)" || return 1
+   MIGRATIONS_DIR="$dir"
+   container="$(docker create "$new_image")" || return 1
+   docker cp -q "${container}:/usr/share/piler/migrations/." "$dir/" || { docker rm -f "$container" >/dev/null; return 1; }
+   docker rm -f "$container" >/dev/null
 
-   sql_files="$(comm -13 <(echo "$old_sql") <(echo "$new_sql"))"
-   manticore_files="$(comm -13 <(echo "$old_manticore") <(echo "$new_manticore"))"
-
-   if [[ -z "$sql_files" && -z "$manticore_files" ]]; then
-      echo "No new migrations"
-      return
-   fi
-
+   ls "$dir"/sql/*.sql >/dev/null 2>&1 || return 1
    dbs="$(databases)" || return 1
 
-   for file in $sql_files; do
-      for db in $dbs; do
-         echo "Migration ${file}: ${db}"
-         docker run --rm --entrypoint cat "$new_image" "/usr/share/piler/migrations/sql/${file}" | run_sql "$db" >/dev/null || return 1
+   for db in $dbs; do
+      echo "Migrations: ${db}"
+      for file in "$dir"/sql/*.sql; do
+         run_sql "$db" < "$file" >/dev/null || { echo "ERROR: $(basename "$file") on ${db}" >&2; return 1; }
       done
    done
 
    # A master's tenant tables are distributed tables, the workers have the data
    if [[ "$ROLE" == "multi-node master" ]]; then
-      return
+      return 0
    fi
 
-   for file in $manticore_files; do
-      for db in $dbs; do
-         echo "Migration ${file}: ${db}"
-         docker run --rm --entrypoint cat "$new_image" "/usr/share/piler/migrations/manticore/${file}" \
-            | sed "s/TENANTID/${db}/g" | docker compose exec -T manticore mysql -h0 -P9306 >/dev/null || return 1
+   for db in $dbs; do
+      for file in "$dir"/manticore/*.sql; do
+         [[ -f "$file" ]] || continue
+         sed "s/TENANTID/${db}/g" "$file" | docker compose exec -T manticore mysql -h0 -P9306 >/dev/null \
+            || { echo "ERROR: $(basename "$file") on the index of ${db}" >&2; return 1; }
       done
    done
 }
@@ -309,13 +290,16 @@ fi
 # --- Migrations -------------------------------------------------------------
 
 if [[ "$TARGET" != "$PILER_VERSION" ]]; then
-   echo "Looking for new migrations"
+   echo "Running the migrations"
    # Before the new containers: a new version may need them to start
+   MIGRATIONS_DIR=""
    if ! run_migrations; then
+      [[ -n "$MIGRATIONS_DIR" ]] && rm -rf "$MIGRATIONS_DIR"
       echo "ERROR: a migration failed. The containers still run ${PILER_VERSION} and .env is unchanged." >&2
       [[ "$BACKUP" == 1 ]] && echo "The database as it was: ${BACKUP_DIR}/db.sql.gz" >&2
       exit 1
    fi
+   rm -rf "$MIGRATIONS_DIR"
 fi
 
 # --- Upgrade ----------------------------------------------------------------
