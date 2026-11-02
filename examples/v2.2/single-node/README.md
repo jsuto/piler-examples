@@ -133,7 +133,7 @@ host). `BACKUP_PASSWORD` encrypts the backups, setup.sh generates it:
 root:
 
 ```
-../../../scripts/piler-backup.sh install-timer     # every day at 02:30, a systemd timer
+../../../scripts/piler-backup.sh install-cron      # every day at 02:30, a file in /etc/cron.d
 ../../../scripts/piler-backup.sh                   # a backup now
 ../../../scripts/piler-backup.sh snapshots         # the backups
 ```

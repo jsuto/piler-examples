@@ -15,9 +15,10 @@
 # It shows the upgrade notes of every release since yours and asks before
 # doing anything; a release with an upgrade step needs your confirmation
 # that it's done. Then it pulls the new images, dumps the database and
-# copies .env and env into backups/, sets the versions in .env, starts the
-# new containers and waits until they're healthy. If they don't get healthy
-# it says how to go back. It never downgrades.
+# copies .env and env into backups/, runs the migrations the new version
+# adds, sets the versions in .env, starts the new containers and waits until
+# they're healthy. If they don't get healthy it says how to go back. It never
+# downgrades.
 
 set -o nounset
 set -o errexit
@@ -85,6 +86,87 @@ notes_between() {
       keep { block[n] = block[n] "\n" $0 }
       END { for (i = n; i >= 1; i--) print block[i] "\n" }
    ' <<< "$NOTES"
+}
+
+# The migration files in a directory of an image
+migration_files() {
+   docker run --rm --entrypoint sh "$1" -c "cd /usr/share/piler/migrations/$2 && ls *.sql" | sort
+}
+
+run_sql() {
+   docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mariadb -uroot "$@"
+}
+
+# The piler database and those of the tenants, on this node
+databases() {
+   local all
+   local tenant
+
+   local tenants
+
+   all=" $(run_sql -N -e 'SHOW DATABASES' | tr '\n' ' ')" || return 1
+   [[ "$all" == *" piler "* ]] || return 1
+   tenants="$(run_sql -N -e "SELECT tenant_id FROM piler.tenant_settings WHERE tenant_id != 'piler'")" || return 1
+   echo piler
+   for tenant in $tenants; do
+      if [[ "$all" == *" ${tenant} "* ]]; then echo "$tenant"; fi
+   done
+}
+
+# Only the files the new image has and the old one doesn't: there's no record
+# of what ran, and the old ones are not worth running again, 001 alone may
+# rebuild the metadata table.
+run_migrations() {
+   local old_image
+   local new_image
+   local old_sql
+   local new_sql
+   local old_manticore
+   local new_manticore
+   local sql_files
+   local manticore_files
+   local dbs
+   local file
+   local db
+
+   # Every step returns by hand: errexit is off under the caller's "if".
+   # A list that can't be read must not look empty, or all would be new.
+   old_image="$(docker compose config --images piler)" && [[ -n "$old_image" ]] || return 1
+   new_image="$(PILER_VERSION="$TARGET" docker compose config --images piler)" && [[ -n "$new_image" ]] || return 1
+   old_sql="$(migration_files "$old_image" sql)" && [[ -n "$old_sql" ]] || return 1
+   new_sql="$(migration_files "$new_image" sql)" && [[ -n "$new_sql" ]] || return 1
+   old_manticore="$(migration_files "$old_image" manticore)" || return 1
+   new_manticore="$(migration_files "$new_image" manticore)" || return 1
+
+   sql_files="$(comm -13 <(echo "$old_sql") <(echo "$new_sql"))"
+   manticore_files="$(comm -13 <(echo "$old_manticore") <(echo "$new_manticore"))"
+
+   if [[ -z "$sql_files" && -z "$manticore_files" ]]; then
+      echo "No new migrations"
+      return
+   fi
+
+   dbs="$(databases)" || return 1
+
+   for file in $sql_files; do
+      for db in $dbs; do
+         echo "Migration ${file}: ${db}"
+         docker run --rm --entrypoint cat "$new_image" "/usr/share/piler/migrations/sql/${file}" | run_sql "$db" >/dev/null || return 1
+      done
+   done
+
+   # A master's tenant tables are distributed tables, the workers have the data
+   if [[ "$ROLE" == "multi-node master" ]]; then
+      return
+   fi
+
+   for file in $manticore_files; do
+      for db in $dbs; do
+         echo "Migration ${file}: ${db}"
+         docker run --rm --entrypoint cat "$new_image" "/usr/share/piler/migrations/manticore/${file}" \
+            | sed "s/TENANTID/${db}/g" | docker compose exec -T manticore mysql -h0 -P9306 >/dev/null || return 1
+      done
+   done
 }
 
 show_versions() {
@@ -222,6 +304,18 @@ if [[ "$BACKUP" == 1 ]]; then
    fi
    gzip -t "$BACKUP_DIR/db.sql.gz" && [[ "$(gzip -dc "$BACKUP_DIR/db.sql.gz" | head -c 1000 | wc -c)" -gt 100 ]] \
       || error "the database dump is empty, nothing has changed"
+fi
+
+# --- Migrations -------------------------------------------------------------
+
+if [[ "$TARGET" != "$PILER_VERSION" ]]; then
+   echo "Looking for new migrations"
+   # Before the new containers: a new version may need them to start
+   if ! run_migrations; then
+      echo "ERROR: a migration failed. The containers still run ${PILER_VERSION} and .env is unchanged." >&2
+      [[ "$BACKUP" == 1 ]] && echo "The database as it was: ${BACKUP_DIR}/db.sql.gz" >&2
+      exit 1
+   fi
 fi
 
 # --- Upgrade ----------------------------------------------------------------

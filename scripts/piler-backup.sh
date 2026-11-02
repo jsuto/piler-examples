@@ -5,9 +5,9 @@
 # Run it in the directory of the installation (with docker-compose.yaml and
 # .env):
 #
-#   piler-backup.sh                       back up now (the timer runs this)
-#   piler-backup.sh install-timer [HH:MM] back up every day (systemd timer,
-#                                         as root; otherwise a cron line)
+#   piler-backup.sh                       back up now (cron runs this)
+#   piler-backup.sh install-cron [HH:MM]  back up every day (/etc/cron.d as
+#                                         root; otherwise a crontab line)
 #   piler-backup.sh snapshots             the backups in the repository
 #   piler-backup.sh restore <id>          restore a backup into this, empty
 #                                         installation (a new host)
@@ -143,7 +143,7 @@ restic() {
       [[ -d "$BACKUP_REPOSITORY" ]] || error "no repository in ${BACKUP_REPOSITORY}. Is its disk mounted?"
       repo_mount=(-v "${BACKUP_REPOSITORY}:${BACKUP_REPOSITORY}")
    elif [[ "$BACKUP_REPOSITORY" == sftp:* ]]; then
-      repo_mount=(-v "${HOME}/.ssh:/root/.ssh:ro")
+      repo_mount=(-v "${HOME:-/root}/.ssh:/root/.ssh:ro")
    fi
 
    # ${a[@]+"${a[@]}"}: an empty array under nounset in bash 3 too
@@ -283,7 +283,16 @@ backup() {
    MYSQL_ID="$(docker compose ps -q --status running mysql)"
    PILER_ID="$(docker compose ps -q --status running piler)"
    MANTICORE_ID="$(docker compose ps -q --status running manticore)"
-   [[ -n "$MYSQL_ID" && -n "$PILER_ID" ]] || error "MariaDB and piler aren't running in the compose project ${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}. Started from a directory of another name? Set COMPOSE_PROJECT_NAME in .env"
+   [[ -n "$MYSQL_ID" ]] || error "MariaDB isn't running in the compose project ${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}. Started from a directory of another name? Set COMPOSE_PROJECT_NAME in .env"
+   # A backup without one of them can't be restored: stop, and record it
+   if [[ -z "$PILER_ID" ]]; then
+      record email_store failed 0
+      error "piler isn't running"
+   fi
+   if [[ -z "$MANTICORE_ID" ]]; then
+      record manticore failed 0
+      error "Manticore isn't running"
+   fi
 
    log "Backing up ${NODE} into ${BACKUP_REPOSITORY}"
 
@@ -307,18 +316,13 @@ backup() {
    fi
 
    # 2. The search index, consistent while Manticore runs
-   if [[ -n "$MANTICORE_ID" ]]; then
-      log "Backing up the search index"
-      if docker exec -e TELEMETRY=0 "$MANTICORE_ID" sh -c "rm -rf $MANTICORE_STAGING && mkdir -p $MANTICORE_STAGING && manticore-backup --config=/etc/manticoresearch/manticore.conf.sh --backup-dir=$MANTICORE_STAGING" \
-           > "$WORK/database/manticore-backup.log" 2>&1; then
-         manticore_size="$(docker exec "$MANTICORE_ID" du -sb "$MANTICORE_STAGING" | cut -f1)"
-      else
-         manticore_ok=0
-         log "WARNING: the search index wasn't backed up (see manticore-backup.log in the backup): a restore needs a reindex"
-      fi
+   log "Backing up the search index"
+   if docker exec -e TELEMETRY=0 "$MANTICORE_ID" sh -c "rm -rf $MANTICORE_STAGING && mkdir -p $MANTICORE_STAGING && manticore-backup --config=/etc/manticoresearch/manticore.conf.sh --backup-dir=$MANTICORE_STAGING" \
+        > "$WORK/database/manticore-backup.log" 2>&1; then
+      manticore_size="$(docker exec "$MANTICORE_ID" du -sb "$MANTICORE_STAGING" | cut -f1)"
    else
       manticore_ok=0
-      log "WARNING: Manticore isn't running, the search index isn't backed up"
+      log "WARNING: the search index wasn't backed up (see manticore-backup.log in the backup): a restore needs a reindex"
    fi
 
    # 3. Everything into one snapshot
@@ -391,9 +395,13 @@ backup() {
    log "Done"
 }
 
-install_timer() {
+# A file in /etc/cron.d as root, otherwise the line for a crontab. The lock
+# of the backup keeps a run from starting while another one is running.
+install_cron() {
    local at="${1:-02:30}"
    local script
+   local file
+   local line
 
    load_settings
    [[ "$at" =~ ^[0-2][0-9]:[0-5][0-9]$ ]] || error "not a time: $at (HH:MM)"
@@ -402,45 +410,38 @@ install_timer() {
       echo "WARNING: no repository in ${BACKUP_REPOSITORY} yet, the backups will fail. Create it: BACKUP_INIT=1 $0"
    fi
    script="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+   mkdir -p backups
+   chmod 700 backups
+   line="${at#*:} ${at%:*} * * *"
 
-   if [[ "$(id -u)" != 0 || ! -d /run/systemd/system ]]; then
+   if [[ "$(id -u)" != 0 || ! -d /etc/cron.d ]]; then
       cat << EOF
-No systemd here, or not root. Add this line to root's crontab (crontab -e):
+Not root, or no /etc/cron.d here. Add this line to root's crontab (crontab -e):
 
-${at#*:} ${at%:*} * * * cd ${PWD} && ${script} >> ${PWD}/backups/backup.log 2>&1
+${line} cd "${PWD}" && "${script}" >> "${PWD}/backups/backup.log" 2>&1
 EOF
       return
    fi
 
-   cat > /etc/systemd/system/piler-backup.service << EOF
-[Unit]
-Description=piler backup (${PWD})
-After=docker.service
-Requires=docker.service
+   # The timer of an earlier version would run it twice
+   if [[ -f /etc/systemd/system/piler-backup.timer ]]; then
+      systemctl disable --now piler-backup.timer >/dev/null 2>&1 || true
+      rm -f /etc/systemd/system/piler-backup.timer /etc/systemd/system/piler-backup.service
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      echo "Removed the systemd timer of an earlier version"
+   fi
 
-[Service]
-Type=oneshot
-WorkingDirectory=${PWD}
-ExecStart=${script}
+   # cron ignores a file whose name has a dot
+   file="/etc/cron.d/piler-backup-$(printf '%s' "$NODE" | tr -c 'A-Za-z0-9_-' '_')"
+   cat > "$file" << EOF
+# The piler backup of ${PWD}, by piler-backup.sh install-cron
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+${line} root cd "${PWD}" && "${script}" >> "${PWD}/backups/backup.log" 2>&1
 EOF
+   chmod 644 "$file"
 
-   cat > /etc/systemd/system/piler-backup.timer << EOF
-[Unit]
-Description=Daily piler backup
-
-[Timer]
-OnCalendar=*-*-* ${at}:00
-RandomizedDelaySec=10m
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-EOF
-
-   systemctl daemon-reload
-   systemctl enable --now piler-backup.timer
-   echo "The backup runs every day at ${at}: systemctl list-timers piler-backup.timer"
-   echo "Its log: journalctl -u piler-backup.service"
+   echo "The backup runs every day at ${at}: ${file}"
+   echo "Its log: ${PWD}/backups/backup.log"
    echo "Keep BACKUP_PASSWORD (in .env) off this host: without it there's no restore."
 }
 
@@ -538,7 +539,9 @@ restore() {
 
 case "${1:-backup}" in
    backup) backup ;;
-   install-timer) install_timer "${2:-}" ;;
+   install-cron) install_cron "${2:-}" ;;
+   # The name of an earlier version
+   install-timer) install_cron "${2:-}" ;;
    snapshots) snapshots ;;
    restore) restore "${2:-}" ;;
    extract) extract "${2:-}" "${3:-}" ;;

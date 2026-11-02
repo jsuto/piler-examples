@@ -292,7 +292,7 @@ emails can't be read, without BACKUP_PASSWORD (in .env) the backups can't.
 
 Daily backups: set BACKUP_REPOSITORY in .env (and the S3 keys), then as root
 
-   ../../../scripts/piler-backup.sh install-timer
+   ../../../scripts/piler-backup.sh install-cron
 
 A directory as the repository: run BACKUP_INIT=1 ../../../scripts/piler-backup.sh
 once first.

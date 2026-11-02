@@ -300,8 +300,8 @@ Run `scripts/piler-backup.sh` of this repository on every node, the master
 too, in the node's directory: see
 [Backup](../single-node/README.md#backup) of the single node, the settings
 in `.env` are the same. Each node is a host in the repository, so all the
-nodes can use one repository. `install-timer` takes a time
-(`install-timer 03:15`): spread the nodes.
+nodes can use one repository. `install-cron` takes a time
+(`install-cron 03:15`): spread the nodes.
 
 The emails a worker keeps in S3 are not in the backup: protect the buckets
 with your object storage's versioning or replication.
