@@ -217,19 +217,21 @@ collect_installation() {
    project_dir="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$PILER_ID")"
    [[ -n "$project_dir" ]] || project_dir="$PWD"
 
+   # Every failure is returned by hand: errexit is off in the "if !" of the
+   # caller, and a file left out would only show at a restore
    {
       for id in $(docker compose ps -aq); do
-         docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{println .Source}}{{end}}{{end}}' "$id"
+         docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{println .Source}}{{end}}{{end}}' "$id" || exit 1
       done
-      docker inspect -f '{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$PILER_ID" | tr ',' '\n'
+      docker inspect -f '{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$PILER_ID" | tr ',' '\n' || exit 1
    } | sed 's#^/host_mnt/#/#' | sort -u | while IFS= read -r path; do  # /host_mnt: Docker Desktop
       case "$path" in
-         "$project_dir"/*) (cd "$project_dir" && find "./${path#"$project_dir"/}" -type f -o -type l) ;;
+         "$project_dir"/*) (cd "$project_dir" && find "./${path#"$project_dir"/}" -type f -o -type l) || exit 1 ;;
       esac
-   done | COPYFILE_DISABLE=1 tar -C "$project_dir" -chf - -T - | tar -xf - -C "$WORK/installation"
+   done | COPYFILE_DISABLE=1 tar -C "$project_dir" -chf - -T - | tar -xf - -C "$WORK/installation" || return 1
 
    # -h: the file behind a symbolic link
-   COPYFILE_DISABLE=1 tar -C "$PWD" -chf - .env docker-compose.yaml | tar -xf - -C "$WORK/installation"
+   COPYFILE_DISABLE=1 tar -C "$PWD" -chf - .env docker-compose.yaml | tar -xf - -C "$WORK/installation" || return 1
 
    # A backup without the key would look fine, but can't be read
    [[ -f "$WORK/installation/piler.key" ]]
@@ -323,7 +325,7 @@ backup() {
    log "Collecting the files of the installation"
    if ! collect_installation; then
       record email_store failed 0
-      error "couldn't collect the files of the installation, or no piler.key among them"
+      error "couldn't read the files of the installation (not run as root?), or piler.key isn't among them"
    fi
    stage 'rm -rf /staging/* && chmod 700 /staging'
    COPYFILE_DISABLE=1 tar -C "$WORK" -cf - . | stage 'tar -xf - -C /staging' \
