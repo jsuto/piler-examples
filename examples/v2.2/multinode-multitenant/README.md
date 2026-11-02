@@ -301,7 +301,9 @@ too, in the node's directory: see
 [Backup](../single-node/README.md#backup) of the single node, the settings
 in `.env` are the same. Each node is a host in the repository, so all the
 nodes can use one repository. `install-cron` takes a time
-(`install-cron 03:15`): spread the nodes.
+(`install-cron 03:15`): spread the nodes. With one repository, set
+`BACKUP_MAINTENANCE=no` in `.env` on every node but one: that one frees the
+space of the removed backups and checks the repository on Sundays.
 
 The emails a worker keeps in S3 are not in the backup: protect the buckets
 with your object storage's versioning or replication.

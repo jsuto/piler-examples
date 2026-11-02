@@ -98,9 +98,14 @@ databases() {
    local tenant
    local tenants
 
-   all=" $(run_sql -N -e 'SHOW DATABASES' | tr '\n' ' ')" || return 1
-   [[ "$all" == *" piler "* ]] || return 1
-   tenants="$(run_sql -N -e "SELECT tenant_id FROM piler.tenant_settings WHERE tenant_id != 'piler'")" || return 1
+   all=" $(run_sql -N -e 'SHOW DATABASES' | tr '\n' ' ')" || { echo "ERROR: couldn't list the databases" >&2; return 1; }
+   [[ "$all" == *" piler "* ]] || { echo "ERROR: no piler database" >&2; return 1; }
+   # Before migration 005 there's no tenant_settings, only piler
+   tenants=""
+   if [[ -n "$(run_sql -N -e "SHOW TABLES FROM piler LIKE 'tenant_settings'")" ]]; then
+      tenants="$(run_sql -N -e "SELECT tenant_id FROM piler.tenant_settings WHERE tenant_id != 'piler'")" \
+         || { echo "ERROR: couldn't read the tenants from piler.tenant_settings" >&2; return 1; }
+   fi
    echo piler
    for tenant in $tenants; do
       if [[ "$all" == *" ${tenant} "* ]]; then echo "$tenant"; fi
@@ -115,25 +120,25 @@ run_migrations() {
    local dir
    local container
    local dbs
-   local file
    local db
 
    # Every step returns by hand: errexit is off under the caller's "if"
-   new_image="$(PILER_VERSION="$TARGET" docker compose config --images piler)" && [[ -n "$new_image" ]] || return 1
+   new_image="$(PILER_VERSION="$TARGET" docker compose config --images piler)" && [[ -n "$new_image" ]] \
+      || { echo "ERROR: couldn't find the image of piler ${TARGET}" >&2; return 1; }
    dir="$(mktemp -d)" || return 1
    MIGRATIONS_DIR="$dir"
-   container="$(docker create "$new_image")" || return 1
-   docker cp -q "${container}:/usr/share/piler/migrations/." "$dir/" || { docker rm -f "$container" >/dev/null; return 1; }
+   container="$(docker create "$new_image")" || { echo "ERROR: couldn't create a container of ${new_image}" >&2; return 1; }
+   docker cp -q "${container}:/usr/share/piler/migrations/." "$dir/" \
+      || { docker rm -f "$container" >/dev/null; echo "ERROR: no migrations in ${new_image}" >&2; return 1; }
    docker rm -f "$container" >/dev/null
 
-   ls "$dir"/sql/*.sql >/dev/null 2>&1 || return 1
+   ls "$dir"/sql/*.sql >/dev/null 2>&1 || { echo "ERROR: no SQL migrations in ${new_image}" >&2; return 1; }
    dbs="$(databases)" || return 1
 
+   # All the files in one session per database: one exec each, not per file
    for db in $dbs; do
       echo "Migrations: ${db}"
-      for file in "$dir"/sql/*.sql; do
-         run_sql "$db" < "$file" >/dev/null || { echo "ERROR: $(basename "$file") on ${db}" >&2; return 1; }
-      done
+      cat "$dir"/sql/*.sql | run_sql "$db" >/dev/null || { echo "ERROR: the migrations on ${db} (the line is of all the files)" >&2; return 1; }
    done
 
    # A master's tenant tables are distributed tables, the workers have the data
@@ -141,12 +146,23 @@ run_migrations() {
       return 0
    fi
 
+   ls "$dir"/manticore/*.sql >/dev/null 2>&1 || return 0
    for db in $dbs; do
-      for file in "$dir"/manticore/*.sql; do
-         [[ -f "$file" ]] || continue
-         sed "s/TENANTID/${db}/g" "$file" | docker compose exec -T manticore mysql -h0 -P9306 >/dev/null \
-            || { echo "ERROR: $(basename "$file") on the index of ${db}" >&2; return 1; }
-      done
+      sed "s/TENANTID/${db}/g" "$dir"/manticore/*.sql | docker compose exec -T manticore mysql -h0 -P9306 >/dev/null \
+         || { echo "ERROR: the Manticore migrations on the index of ${db}" >&2; return 1; }
+   done
+}
+
+# The services of piler-ee itself: they're stopped for the migrations, the old
+# version mustn't work on a schema that changes under it. piler-smtp keeps
+# taking the email, MariaDB and Manticore keep running.
+app_services() {
+   local service
+
+   for service in $(docker compose config --services); do
+      case "$service" in
+         piler|piler-ui|scanner|s3uploader) echo "$service" ;;
+      esac
    done
 }
 
@@ -274,6 +290,10 @@ chmod 700 backups "$BACKUP_DIR"
 cp -p .env "$BACKUP_DIR/.env"
 [[ -f env ]] && cp -p env "$BACKUP_DIR/env"
 
+if [[ "$BACKUP" == 0 && "$TARGET" != "$PILER_VERSION" ]]; then
+   echo "WARNING: --no-backup: if the migrations or the new version fail, there's no dump of the database to go back to"
+fi
+
 if [[ "$BACKUP" == 1 ]]; then
    [[ -n "$(docker compose ps -q --status running mysql)" ]] || error "MariaDB isn't running, start piler first (or --no-backup)"
    echo "Dumping the database into ${BACKUP_DIR}/db.sql.gz"
@@ -290,13 +310,24 @@ fi
 # --- Migrations -------------------------------------------------------------
 
 if [[ "$TARGET" != "$PILER_VERSION" ]]; then
+   # Before the new containers (a new version may need them to start), with
+   # the old ones stopped
+   APP_SERVICES="$(app_services | tr '\n' ' ')"
+   echo "Stopping ${APP_SERVICES}for the migrations (piler-smtp keeps taking the email)"
+   # shellcheck disable=SC2086 # a list
+   docker compose stop $APP_SERVICES >/dev/null 2>&1 || error "couldn't stop ${APP_SERVICES}"
    echo "Running the migrations"
-   # Before the new containers: a new version may need them to start
    MIGRATIONS_DIR=""
    if ! run_migrations; then
       [[ -n "$MIGRATIONS_DIR" ]] && rm -rf "$MIGRATIONS_DIR"
-      echo "ERROR: a migration failed. The containers still run ${PILER_VERSION} and .env is unchanged." >&2
-      [[ "$BACKUP" == 1 ]] && echo "The database as it was: ${BACKUP_DIR}/db.sql.gz" >&2
+      echo "ERROR: a migration failed, .env is unchanged. The database may be migrated in part." >&2
+      if [[ "$BACKUP" == 1 ]]; then
+         echo "Restore it before you start ${PILER_VERSION} again:" >&2
+         echo "   gzip -dc ${BACKUP_DIR}/db.sql.gz | docker compose exec -T -e MYSQL_PWD=<MYSQL_ROOT_PASSWORD> mysql mariadb -uroot" >&2
+         echo "   docker compose up -d --wait" >&2
+      else
+         echo "With --no-backup there's no dump to go back to: start ${PILER_VERSION} with docker compose up -d --wait, or fix the cause and run the upgrade again." >&2
+      fi
       exit 1
    fi
    rm -rf "$MIGRATIONS_DIR"

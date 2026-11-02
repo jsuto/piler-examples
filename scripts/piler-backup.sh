@@ -36,6 +36,9 @@
 #                       its own that's removed afterwards (backups/work).
 #                       It needs room for the dump, which isn't encrypted
 #                       there
+#   BACKUP_MAINTENANCE  no: another node sharing the repository frees the space
+#                       and checks it on Sundays (prune and check need it
+#                       alone, one node is enough)
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY   for an S3 repository
 #
 # Emails in S3 storage (multi-node workers) are not in it: back up the
@@ -111,17 +114,19 @@ check_outside_installation() {
 # password, the S3 keys), which is recorded and stops the backup
 repository_state() {
    local out
+   local rc
 
    if [[ "$BACKUP_REPOSITORY" == /* && ! -d "$BACKUP_REPOSITORY" ]]; then
       return 1
    fi
+   # Exit code 10 (restic 0.17+): no repository. The text isn't enough, a
+   # failed pull of the image says "repository does not exist" too.
    if out="$(restic -- cat config 2>&1 >/dev/null)"; then
       return 0
+   else
+      rc=$?
    fi
-   # restic says "Is there a repository" on a network error too
-   if grep -q 'does not exist' <<< "$out"; then
-      return 1
-   fi
+   [[ "$rc" == 10 ]] && return 1
    echo "$out" | tail -3 >&2
    return 2
 }
@@ -203,6 +208,9 @@ cleanup() {
    stage 'rm -rf /staging/*' >/dev/null 2>&1 || true
    if [[ -n "${WORK:-}" ]]; then
       rm -rf "$WORK"
+   fi
+   if [[ -n "${ERRORS:-}" ]]; then
+      rm -f "$ERRORS"
    fi
    if [[ -n "${MANTICORE_ID:-}" ]]; then
       docker exec "$MANTICORE_ID" rm -rf "$MANTICORE_STAGING" 2>/dev/null || true
@@ -304,6 +312,7 @@ backup() {
    local total
    local verified=""
    local out
+   local errors
    local rc
 
    load_settings
@@ -378,12 +387,14 @@ backup() {
    log "Writing the snapshot"
    # /staging: the dump and the installation. The license and the key
    # mounted into the piler container are among the files of the installation.
+   # The errors are on stderr
+   ERRORS="$(mktemp)"
    # shellcheck disable=SC2086 # paths is a list
    if out="$(restic --volumes-from "${PILER_ID}:ro" ${MANTICORE_ID:+--volumes-from "${MANTICORE_ID}:ro"} \
         -v "${STAGING_VOLUME}:/staging:ro" -- \
         backup --retry-lock 1h --json --quiet --host "$NODE" --tag piler \
         --exclude /etc/piler/license.jwt --exclude /etc/piler/piler.key \
-        /staging $paths)"; then
+        /staging $paths 2> "$ERRORS")"; then
       rc=0
    else
       rc=$?
@@ -396,15 +407,16 @@ backup() {
    # Exit code 3: files that couldn't be read. Those gone since restic listed
    # them (an uploaded S3 file, a purged email) are fine, anything else makes
    # the snapshot incomplete
-   if [[ "$rc" == 3 && -n "$snapshot" ]] \
-      && ! grep '"message_type":"error"' <<< "$out" | grep -q -v 'no such file or directory'; then
-      log "WARNING: $(grep -c '"message_type":"error"' <<< "$out") files were removed during the backup"
+   errors="$(grep '"message_type":"error"' "$ERRORS" || true)"
+   if [[ "$rc" == 3 && -n "$snapshot" && -n "$errors" ]] \
+      && ! grep -q -v 'no such file or directory' <<< "$errors"; then
+      log "WARNING: $(wc -l <<< "$errors" | tr -d ' ') files were removed during the backup"
       rc=0
    fi
 
    if [[ "$rc" != 0 || -z "$snapshot" ]]; then
-      grep '"message_type":"error"\|"message_type":"exit_error"' <<< "$out" | head -5 >&2 || true
-      [[ -n "$snapshot" ]] && restic -- forget --quiet "$snapshot" >/dev/null 2>&1
+      tail -5 "$ERRORS" >&2
+      [[ -n "$snapshot" ]] && restic -- forget --retry-lock 1h --quiet "$snapshot" >/dev/null 2>&1
       record email_store failed 0
       error "the snapshot failed (restic exit code ${rc})"
    fi
@@ -419,7 +431,8 @@ backup() {
       --keep-daily "${BACKUP_KEEP_DAILY:-7}" --keep-weekly "${BACKUP_KEEP_WEEKLY:-4}" \
       --keep-monthly "${BACKUP_KEEP_MONTHLY:-12}" >/dev/null || log "WARNING: removing the old snapshots failed"
 
-   if [[ "$(date +%u)" == 7 || -n "${BACKUP_CHECK_NOW:-}" ]]; then
+   # BACKUP_MAINTENANCE=no: another node sharing the repository does it
+   if [[ "${BACKUP_MAINTENANCE:-yes}" != no && ( "$(date +%u)" == 7 || -n "${BACKUP_CHECK_NOW:-}" ) ]]; then
       log "Freeing the space of the removed snapshots, checking 5% of the data"
       restic -- prune --retry-lock 1h --quiet >/dev/null || log "WARNING: prune failed"
       if restic -- check --retry-lock 1h --read-data-subset=5% >/dev/null 2>&1; then
@@ -469,12 +482,21 @@ EOF
       return
    fi
 
-   # The timer of an earlier version would run it twice
-   if [[ -f /etc/systemd/system/piler-backup.timer ]]; then
-      systemctl disable --now piler-backup.timer >/dev/null 2>&1 || true
-      rm -f /etc/systemd/system/piler-backup.timer /etc/systemd/system/piler-backup.service
-      systemctl daemon-reload >/dev/null 2>&1 || true
-      echo "Removed the systemd timer of an earlier version"
+   # Nothing would run the file
+   if ! pgrep -x cron >/dev/null && ! pgrep -x crond >/dev/null; then
+      error "no cron daemon runs here: install and start cron (or cronie), or run the backup with another scheduler"
+   fi
+
+   # The timer of an earlier version, for this installation, would run it twice
+   if [[ -f /etc/systemd/system/piler-backup.service ]]; then
+      if grep -qxF "WorkingDirectory=${PWD}" /etc/systemd/system/piler-backup.service; then
+         systemctl disable --now piler-backup.timer >/dev/null 2>&1 || true
+         rm -f /etc/systemd/system/piler-backup.timer /etc/systemd/system/piler-backup.service
+         systemctl daemon-reload >/dev/null 2>&1 || true
+         echo "Removed the systemd timer of an earlier version"
+      else
+         echo "WARNING: /etc/systemd/system/piler-backup.timer backs up another installation, left as it is"
+      fi
    fi
 
    # cron ignores a file whose name has a dot
