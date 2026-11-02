@@ -107,8 +107,27 @@ check_outside_installation() {
    esac
 }
 
+# 0: it's there, 1: there's none, else: it can't be read (network, the
+# password, the S3 keys), which is recorded and stops the backup
+repository_state() {
+   local out
+
+   if [[ "$BACKUP_REPOSITORY" == /* && ! -d "$BACKUP_REPOSITORY" ]]; then
+      return 1
+   fi
+   if out="$(restic -- cat config 2>&1 >/dev/null)"; then
+      return 0
+   fi
+   # restic says "Is there a repository" on a network error too
+   if grep -q 'does not exist' <<< "$out"; then
+      return 1
+   fi
+   echo "$out" | tail -3 >&2
+   return 2
+}
+
 repository_exists() {
-   [[ "$BACKUP_REPOSITORY" != /* || -d "$BACKUP_REPOSITORY" ]] && restic -- cat config >/dev/null 2>&1
+   repository_state 2>/dev/null
 }
 
 # A directory only with BACKUP_INIT=1: without its disk, the path is on the
@@ -126,7 +145,10 @@ create_repository() {
    fi
 
    log "Creating the repository"
-   restic -- init >/dev/null || error "couldn't create the repository ${BACKUP_REPOSITORY}"
+   if ! restic -- init >/dev/null; then
+      record email_store failed 0
+      error "couldn't create the repository ${BACKUP_REPOSITORY}"
+   fi
 }
 
 # restic in a container: restic [docker run options --] restic arguments
@@ -197,6 +219,10 @@ prepare_workdir() {
    [[ "$WORKDIR" == /* && "$WORKDIR" != "/" ]] || error "WORKDIR must be an absolute path: $WORKDIR"
    case "${WORKDIR%/}/" in
       "${BACKUP_REPOSITORY%/}"/*) error "WORKDIR can't be in the repository: $WORKDIR" ;;
+   esac
+   # The work directory is removed: it mustn't hold the repository
+   case "${BACKUP_REPOSITORY%/}/" in
+      "${WORKDIR%/}"/*) error "the repository can't be in WORKDIR: $BACKUP_REPOSITORY" ;;
    esac
 
    mkdir -p "$WORKDIR"
@@ -301,7 +327,13 @@ backup() {
 
    log "Backing up ${NODE} into ${BACKUP_REPOSITORY}"
 
-   repository_exists || create_repository
+   local state=0
+   repository_state || state=$?
+   case "$state" in
+      0) ;;
+      1) create_repository ;;
+      *) record email_store failed 0; error "can't read the repository ${BACKUP_REPOSITORY} (see above)" ;;
+   esac
 
    prepare_workdir
 
@@ -349,7 +381,7 @@ backup() {
    # shellcheck disable=SC2086 # paths is a list
    if out="$(restic --volumes-from "${PILER_ID}:ro" ${MANTICORE_ID:+--volumes-from "${MANTICORE_ID}:ro"} \
         -v "${STAGING_VOLUME}:/staging:ro" -- \
-        backup --json --quiet --host "$NODE" --tag piler \
+        backup --retry-lock 1h --json --quiet --host "$NODE" --tag piler \
         --exclude /etc/piler/license.jwt --exclude /etc/piler/piler.key \
         /staging $paths)"; then
       rc=0
@@ -361,7 +393,15 @@ backup() {
    snapshot="$(sed -n 's/.*"snapshot_id":"\([0-9a-f]*\)".*/\1/p' <<< "$summary")"
    total="$(sed -n 's/.*"total_bytes_processed":\([0-9]*\).*/\1/p' <<< "$summary")"
 
-   # A file that couldn't be read leaves an incomplete snapshot (exit code 3)
+   # Exit code 3: files that couldn't be read. Those gone since restic listed
+   # them (an uploaded S3 file, a purged email) are fine, anything else makes
+   # the snapshot incomplete
+   if [[ "$rc" == 3 && -n "$snapshot" ]] \
+      && ! grep '"message_type":"error"' <<< "$out" | grep -q -v 'no such file or directory'; then
+      log "WARNING: $(grep -c '"message_type":"error"' <<< "$out") files were removed during the backup"
+      rc=0
+   fi
+
    if [[ "$rc" != 0 || -z "$snapshot" ]]; then
       grep '"message_type":"error"\|"message_type":"exit_error"' <<< "$out" | head -5 >&2 || true
       [[ -n "$snapshot" ]] && restic -- forget --quiet "$snapshot" >/dev/null 2>&1
@@ -374,14 +414,15 @@ backup() {
    #    data is read back
    log "Removing the old snapshots"
    # Grouped by node: a node whose paths change (a new volume) keeps no old snapshots
-   restic -- forget --quiet --host "$NODE" --tag piler --group-by host,tags \
+   # --retry-lock: the nodes may share the repository, wait for another one's prune
+   restic -- forget --retry-lock 1h --quiet --host "$NODE" --tag piler --group-by host,tags \
       --keep-daily "${BACKUP_KEEP_DAILY:-7}" --keep-weekly "${BACKUP_KEEP_WEEKLY:-4}" \
       --keep-monthly "${BACKUP_KEEP_MONTHLY:-12}" >/dev/null || log "WARNING: removing the old snapshots failed"
 
    if [[ "$(date +%u)" == 7 || -n "${BACKUP_CHECK_NOW:-}" ]]; then
       log "Freeing the space of the removed snapshots, checking 5% of the data"
-      restic -- prune --quiet >/dev/null || log "WARNING: prune failed"
-      if restic -- check --read-data-subset=5% >/dev/null 2>&1; then
+      restic -- prune --retry-lock 1h --quiet >/dev/null || log "WARNING: prune failed"
+      if restic -- check --retry-lock 1h --read-data-subset=5% >/dev/null 2>&1; then
          verified="pass"
       else
          verified="fail"
