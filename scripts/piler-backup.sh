@@ -200,6 +200,11 @@ prepare_workdir() {
    esac
 
    mkdir -p "$WORKDIR"
+   # In a directory others can write, they could swap the work directory for a
+   # link, and the dump would go where it points
+   [[ ! -L "$WORKDIR" && "$(stat -c %u "$WORKDIR" 2>/dev/null || stat -f %u "$WORKDIR")" == "$(id -u)" \
+      && "$(( 0$(stat -c %a "$WORKDIR" 2>/dev/null || stat -f %Lp "$WORKDIR") & 022 ))" == 0 ]] \
+      || error "WORKDIR ${WORKDIR} must be yours, and not writable by others (chmod go-w)"
    rm -rf "${WORKDIR%/}/piler-backup-${NODE}"
    mkdir -m 700 "${WORKDIR%/}/piler-backup-${NODE}"
    WORK="${WORKDIR%/}/piler-backup-${NODE}"
