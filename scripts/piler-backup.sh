@@ -324,14 +324,16 @@ backup() {
    PILER_ID="$(docker compose ps -q --status running piler)"
    MANTICORE_ID="$(docker compose ps -q --status running manticore)"
    [[ -n "$MYSQL_ID" ]] || error "MariaDB isn't running in the compose project ${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}. Started from a directory of another name? Set COMPOSE_PROJECT_NAME in .env"
-   # A backup without one of them can't be restored: stop, and record it
+   # Without piler there are no volumes to back up: stop, and record it
    if [[ -z "$PILER_ID" ]]; then
       record email_store failed 0
       error "piler isn't running"
    fi
+   # Without Manticore the rest is still backed up: the index can be rebuilt
+   # (reindex), the failure is recorded at the end
    if [[ -z "$MANTICORE_ID" ]]; then
-      record manticore failed 0
-      error "Manticore isn't running"
+      manticore_ok=0
+      log "WARNING: Manticore isn't running: backing up without the search index, a restore needs a reindex"
    fi
 
    log "Backing up ${NODE} into ${BACKUP_REPOSITORY}"
@@ -362,13 +364,15 @@ backup() {
    fi
 
    # 2. The search index, consistent while Manticore runs
-   log "Backing up the search index"
-   if docker exec -e TELEMETRY=0 "$MANTICORE_ID" sh -c "rm -rf $MANTICORE_STAGING && mkdir -p $MANTICORE_STAGING && manticore-backup --config=/etc/manticoresearch/manticore.conf.sh --backup-dir=$MANTICORE_STAGING" \
-        > "$WORK/database/manticore-backup.log" 2>&1; then
-      manticore_size="$(docker exec "$MANTICORE_ID" du -sb "$MANTICORE_STAGING" | cut -f1)"
-   else
-      manticore_ok=0
-      log "WARNING: the search index wasn't backed up (see manticore-backup.log in the backup): a restore needs a reindex"
+   if [[ "$manticore_ok" == 1 ]]; then
+      log "Backing up the search index"
+      if docker exec -e TELEMETRY=0 "$MANTICORE_ID" sh -c "rm -rf $MANTICORE_STAGING && mkdir -p $MANTICORE_STAGING && manticore-backup --config=/etc/manticoresearch/manticore.conf.sh --backup-dir=$MANTICORE_STAGING" \
+           > "$WORK/database/manticore-backup.log" 2>&1; then
+         manticore_size="$(docker exec "$MANTICORE_ID" du -sb "$MANTICORE_STAGING" | cut -f1)"
+      else
+         manticore_ok=0
+         log "WARNING: the search index wasn't backed up (see manticore-backup.log in the backup): a restore needs a reindex"
+      fi
    fi
 
    # 3. Everything into one snapshot
