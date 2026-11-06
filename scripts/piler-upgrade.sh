@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-# Upgrades a piler installation of the Docker compose examples (v2.2): a
+# Upgrades a piler installation of the Docker compose examples (v2): a
 # single node, or a node of a multi-node deployment. Run it in the
 # directory of the installation (with docker-compose.yaml and .env):
 #
 #   piler-upgrade.sh                   the versions now, and the newer releases
-#   piler-upgrade.sh 2.2.6             upgrade piler-ee (piler, piler-ui, ...)
+#   piler-upgrade.sh 2.3.1             upgrade piler-ee (piler, piler-ui, ...)
 #
 # Options: --smtp <version> and --scanner <version> upgrade piler-smtp and
 # the scanner too, --yes doesn't ask, --no-backup skips the database dump.

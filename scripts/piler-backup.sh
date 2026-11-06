@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Backs up a piler installation of the Docker compose examples (v2.2) into
+# Backs up a piler installation of the Docker compose examples (v2) into
 # a restic repository: a single node, or a node of a multi-node deployment.
 # Run it in the directory of the installation (with docker-compose.yaml and
 # .env):

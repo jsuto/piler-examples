@@ -1,6 +1,6 @@
-# Deploying piler 2.2.5 on a single host
+# Deploying piler on a single host
 
-Every component of piler enterprise 2.2.5 on one host with docker compose,
+Every component of piler enterprise on one host with docker compose,
 with traefik in front of it for HTTPS (Let's Encrypt certificates).
 
 Your license determines whether it's a no-tenant or multi-tenant deployment.
@@ -85,7 +85,7 @@ files. Then, in this directory:
 
 ```
 ../../../scripts/piler-upgrade.sh           # your versions, and the newer releases
-../../../scripts/piler-upgrade.sh 2.2.6     # upgrade piler-ee
+../../../scripts/piler-upgrade.sh 2.3.1     # upgrade piler-ee
 ```
 
 `piler-upgrade.sh` is in `scripts/` of this repository. On a host with a
@@ -185,9 +185,9 @@ of the existing database. To use the new files:
    ACME_EMAIL=hostmaster@example.com
    MYSQL_PASSWORD=<the MYSQL_PASSWORD of your docker-compose.yaml>
    MYSQL_ROOT_PASSWORD=<the MYSQL_ROOT_PASSWORD of your docker-compose.yaml>
-   PILER_VERSION=2.2.5
-   PILER_SMTP_VERSION=1.1.7
-   SCANNER_VERSION=1.3.1
+   PILER_VERSION=2.3.0
+   PILER_SMTP_VERSION=1.1.8
+   SCANNER_VERSION=1.3.2
    ```
 
    `PILER_HOSTNAME` is the hostname in your `traefik-dynamic.yaml`, the

@@ -16,9 +16,9 @@ set -o nounset
 set -o errexit
 set -o pipefail
 
-PILER_VERSION_DEFAULT="2.2.5"
-PILER_SMTP_VERSION_DEFAULT="1.1.7"
-SCANNER_VERSION_DEFAULT="1.3.1"
+PILER_VERSION_DEFAULT="2.3.0"
+PILER_SMTP_VERSION_DEFAULT="1.1.8"
+SCANNER_VERSION_DEFAULT="1.3.2"
 
 VOLUMES=( piler_db piler_manticore piler_etc piler_store piler_astore piler_tmp piler_traefik piler_error )
 

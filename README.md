@@ -2,9 +2,9 @@
 
 ## Piler enterprise 2.2 deployments
 
-* [Single node](examples/v2.2/single-node/): every component on one host,
+* [Single node](examples/v2/single-node/): every component on one host,
   no-tenant or multi-tenant, depending on the license
-* [Multi-node, multi-tenant](examples/v2.2/multinode-multitenant/): a master
+* [Multi-node, multi-tenant](examples/v2/multinode-multitenant/): a master
   and several workers on separate hosts, emails in S3-compatible storage,
   for hosting providers and MSPs
 

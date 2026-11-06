@@ -1,10 +1,11 @@
-# Multi-node, multi-tenant piler 2.2
+# Multi-node, multi-tenant piler 2
 
 A piler enterprise deployment for many tenants on several hosts: one master
 node and any number of worker nodes, the emails stored in S3-compatible
 object storage. It follows the conventions of the
 [single-node example](../single-node/).
 
+The `.env` files have piler-ee 2.3.0, piler-smtp 1.1.8 and scanner 1.3.2.
 Tested with piler-ee 2.2.5, piler-smtp 1.1.7 and scanner 1.3.1, one master
 and two workers.
 
@@ -266,7 +267,7 @@ Upgrade the workers first, one at a time, then the master. On each node,
 in its directory:
 
 ```
-piler-upgrade.sh 2.2.6
+piler-upgrade.sh 2.3.1
 ```
 
 It shows the [upgrade notes](https://docs.mailpiler.com/piler-ee-fiber/upgrade/)
