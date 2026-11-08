@@ -60,7 +60,7 @@ services:
 
   cache:
     <<: *defaults
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:9-alpine
     cap_drop:
       - ALL
     cap_add:
