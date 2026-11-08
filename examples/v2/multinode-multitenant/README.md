@@ -5,7 +5,7 @@ node and any number of worker nodes, the emails stored in S3-compatible
 object storage. It follows the conventions of the
 [single-node example](../single-node/).
 
-The `.env` files have piler-ee 2.3.0, piler-smtp 1.1.8 and scanner 1.3.2.
+The `.env` files have piler-ee 2.3.1, piler-smtp 1.1.9 and scanner 1.3.3.
 Tested with piler-ee 2.2.5, piler-smtp 1.1.7 and scanner 1.3.1, one master
 and two workers.
 

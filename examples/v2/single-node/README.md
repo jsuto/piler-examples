@@ -185,9 +185,9 @@ of the existing database. To use the new files:
    ACME_EMAIL=hostmaster@example.com
    MYSQL_PASSWORD=<the MYSQL_PASSWORD of your docker-compose.yaml>
    MYSQL_ROOT_PASSWORD=<the MYSQL_ROOT_PASSWORD of your docker-compose.yaml>
-   PILER_VERSION=2.3.0
-   PILER_SMTP_VERSION=1.1.8
-   SCANNER_VERSION=1.3.2
+   PILER_VERSION=2.3.1
+   PILER_SMTP_VERSION=1.1.9
+   SCANNER_VERSION=1.3.3
    ```
 
    `PILER_HOSTNAME` is the hostname in your `traefik-dynamic.yaml`, the

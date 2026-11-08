@@ -40,7 +40,7 @@ services:
       retries: 5
 
   manticore:
-    image: manticoresearch/manticore:25.0.0
+    image: manticoresearch/manticore:29.9.0
     container_name: manticore
     restart: unless-stopped
     <<: *networks
