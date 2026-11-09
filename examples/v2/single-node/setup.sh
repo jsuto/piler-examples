@@ -81,13 +81,23 @@ check_existing_installation() {
    fi
 }
 
-# The hostname in the license: piler-smtp accepts emails to addresses there only
-license_hostname() {
+# The claims of the license, JSON
+license_payload() {
    local payload
 
    payload="$(cut -d. -f2 license.jwt | tr '_-' '/+')"
    while (( ${#payload} % 4 )); do payload+="="; done
-   base64 -d <<< "$payload" 2>/dev/null | grep -o '"hostname":"[^"]*"' | cut -d'"' -f4 || true
+   base64 -d <<< "$payload" 2>/dev/null || true
+}
+
+# The hostname in the license: piler-smtp accepts emails to addresses there only
+license_hostname() {
+   license_payload | grep -o '"hostname":"[^"]*"' | cut -d'"' -f4 || true
+}
+
+# piler-ui is multi-tenant only with a multi-tenant license
+license_multitenant() {
+   license_payload | grep -q '"multitenancy":true'
 }
 
 ask_settings() {
@@ -104,7 +114,13 @@ ask_settings() {
       echo "WARNING: the license is for ${licensed}: piler-smtp accepts the emails sent to addresses @${licensed} only"
    fi
 
-   ask TENANT_HOSTNAMES "Hostnames of tenants, comma separated (multi-tenant license only, empty for none)" "" optional
+   if license_multitenant; then
+      ask TENANT_HOSTNAMES "Hostnames of tenants, comma separated (empty for none)" "" optional
+   elif [[ -n "${TENANT_HOSTNAMES:-}" ]]; then
+      error "TENANT_HOSTNAMES is set, but the license isn't multi-tenant"
+   else
+      TENANT_HOSTNAMES=""
+   fi
    TENANT_HOSTNAMES="$(tr -d ' ' <<< "$TENANT_HOSTNAMES")"
    if [[ -n "$TENANT_HOSTNAMES" ]]; then
       IFS=',' read -r -a hosts <<< "$TENANT_HOSTNAMES"
@@ -246,9 +262,17 @@ create_volumes() {
 }
 
 check_dns() {
-   if command -v getent >/dev/null && ! getent hosts "$PILER_HOSTNAME" >/dev/null; then
-      echo "WARNING: ${PILER_HOSTNAME} doesn't resolve yet: Let's Encrypt can't issue its certificate until it points to this host"
-   fi
+   local host
+   local hosts
+
+   command -v getent >/dev/null || return 0
+
+   IFS=',' read -r -a hosts <<< "${PILER_HOSTNAME},${TENANT_HOSTNAMES:-}"
+   for host in "${hosts[@]}"; do
+      if [[ -n "$host" ]] && ! getent hosts "$host" >/dev/null; then
+         echo "WARNING: ${host} doesn't resolve yet: Let's Encrypt can't issue its certificate until it points to this host"
+      fi
+   done
 }
 
 main() {
