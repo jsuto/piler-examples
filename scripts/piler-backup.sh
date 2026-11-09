@@ -12,6 +12,11 @@
 #   piler-backup.sh restore <id>          restore a backup into this, empty
 #                                         installation (a new host)
 #   piler-backup.sh extract <id> <dir>    extract the files of a backup
+#   piler-backup.sh restore-tenant [--files-only] <id> <tenant>
+#                                         restore a tenant of this running
+#                                         installation to the backup;
+#                                         --files-only: only its missing
+#                                         files, not its database and index
 #
 # What's in a backup: the databases (mariadb-dump), the search index
 # (manticore-backup), the stored emails and attachments, /etc/piler, the
@@ -70,7 +75,7 @@ log() {
 }
 
 usage() {
-   sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
+   sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'
    exit 1
 }
 
@@ -227,6 +232,10 @@ cleanup() {
    fi
    if [[ -n "${MANTICORE_ID:-}" ]]; then
       docker exec "$MANTICORE_ID" rm -rf "$MANTICORE_STAGING" 2>/dev/null || true
+   fi
+   # restore-tenant stopped it
+   if [[ -n "${PILER_STOPPED:-}" ]]; then
+      docker compose start piler >/dev/null 2>&1 || echo "ERROR: couldn't start piler again: docker compose start piler" >&2
    fi
    rm -rf "$LOCK"
 }
@@ -625,6 +634,138 @@ restore() {
    log "Done: ${messages} emails in the databases. The emails archived after the backup are not in it."
 }
 
+# The Manticore tables of a tenant: the tenant's name and these suffixes
+# (etc/manticore.sql.dist of piler-ee)
+TENANT_TABLE_SUFFIXES=" _tag1 _note1 _cat1 _audit _embeddings _teams_messages _slack_messages"
+
+# One tenant of a running installation back to a backup, the rest isn't
+# touched: its database, its emails and attachments, its Manticore tables.
+# Whatever the tenant got after the backup is lost: the emails, the users,
+# the settings. --files-only, for a loss of files only (the database and the
+# index are fine): the missing files are written back, nothing else is
+# touched. The emails never change once stored
+restore_tenant() {
+   local files_only=""
+   if [[ "${1:-}" == --files-only ]]; then
+      files_only=1
+      shift
+   fi
+   local id="${1:-}"
+   local tenant="${2:-}"
+   local piler_id
+   local tenants
+   local backup_name
+   local tables=""
+   local includes=()
+   local suffix
+   local messages
+
+   [[ -n "$id" && -n "$tenant" ]] || usage
+   # It goes into SQL and paths
+   [[ "$tenant" =~ ^[A-Za-z0-9_-]+$ ]] || error "invalid tenant name: ${tenant}"
+   load_settings
+
+   piler_id="$(docker compose ps -aq piler)"
+   [[ -n "$piler_id" ]] || error "there's no piler container"
+
+   if [[ -n "$files_only" ]]; then
+      take_lock
+      trap cleanup EXIT
+      # never: only the missing files, piler may keep running
+      log "Restoring the missing files of the tenant ${tenant} from ${id}"
+      restic --volumes-from "$piler_id" -- restore "$id" --target / --overwrite never \
+         --include "/var/piler/store/*/${tenant}" --include "/var/piler/astore/*/${tenant}" | tail -1 \
+         || error "the restore of the files failed"
+      log "Done"
+      return 0
+   fi
+
+   MYSQL_ID="$(docker compose ps -q --status running mysql)"
+   MANTICORE_ID="$(docker compose ps -q --status running manticore)"
+   [[ -n "$MYSQL_ID" ]] || error "MariaDB isn't running"
+   [[ -n "$MANTICORE_ID" ]] || error "Manticore isn't running"
+
+   # The tenants: the databases with a metadata table. With several of them,
+   # piler is the database of every tenant (tenant_settings, ...)
+   tenants="$(docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mariadb -uroot -N -e \
+      "SELECT table_schema FROM information_schema.tables WHERE table_name = 'metadata'")" \
+      || error "couldn't read the databases"
+   if [[ "$tenant" == piler && "$(wc -l <<< "$tenants" | tr -d ' ')" -gt 1 ]]; then
+      error "piler has the data of every tenant here: restore-tenant restores one of the others"
+   fi
+
+   take_lock
+   trap cleanup EXIT
+
+   log "Restoring the tenant ${tenant} from ${id}"
+   restic -- ls "$id" /staging/database/mariadb-all-databases.sql >/dev/null 2>&1 \
+      || error "couldn't read ${id} from ${BACKUP_REPOSITORY}"
+
+   # piler-smtp keeps receiving, piler archives the emails when it's back
+   log "Stopping piler"
+   PILER_STOPPED=1
+   docker compose stop piler >/dev/null 2>&1 || error "couldn't stop piler"
+
+   # The dump has every database: its header (the session settings) and the
+   # part of this one, which is dropped first. Without that part nothing
+   # is dropped, and awk fails
+   log "Restoring the database"
+   restic -- dump "$id" /staging/database/mariadb-all-databases.sql \
+      | awk -v db="$tenant" '
+         /^-- Current Database: `/ {
+            seen = 1
+            name = $0
+            sub(/^-- Current Database: `/, "", name)
+            sub(/`$/, "", name)
+            if (found) done = 1
+            else if (name == db) { found = 1; print "DROP DATABASE IF EXISTS `" db "`;" }
+         }
+         done { next }
+         !seen || found { print }
+         END { exit found ? 0 : 2 }' \
+      | docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mariadb -uroot \
+      || error "the database restore failed: is ${tenant} in the backup? (the database of a failed restore may be gone, run it again)"
+
+   # if-changed: only what's missing or differs is written. The emails
+   # archived after the backup stay, without metadata (purge -orphans)
+   log "Restoring the emails"
+   restic --volumes-from "$piler_id" -- restore "$id" --target / --overwrite if-changed \
+      --include "/var/piler/store/*/${tenant}" --include "/var/piler/astore/*/${tenant}" >/dev/null \
+      || error "the restore of the emails failed"
+
+   # The tables from the backup into the Manticore volume, then each one
+   # dropped and imported, while Manticore serves the other tenants
+   log "Restoring the search index"
+   for suffix in "" $TENANT_TABLE_SUFFIXES; do
+      tables+=" ${tenant}${suffix}"
+      includes+=(--include "${MANTICORE_STAGING}/*/data/${tenant}${suffix}")
+   done
+   restic --volumes-from "$MANTICORE_ID" -- restore "$id" --target / "${includes[@]}" >/dev/null \
+      || error "the restore of the search index failed: reindex the tenant"
+   backup_name="$(docker exec "$MANTICORE_ID" sh -c "ls $MANTICORE_STAGING 2>/dev/null | head -1" || true)"
+   if [[ -z "$backup_name" ]]; then
+      log "WARNING: the backup has no search index of ${tenant}: reindex the tenant"
+   else
+      # shellcheck disable=SC2016 # expanded by the shell of the container
+      docker exec -e "TABLES=${tables}" -e "B=${MANTICORE_STAGING}/${backup_name}/data" "$MANTICORE_ID" sh -c '
+         set -e
+         for t in $TABLES; do
+            [ -d "$B/$t" ] || continue
+            echo "   $t"
+            mysql -h 127.0.0.1 -P 9306 -e "DROP TABLE IF EXISTS $t"
+            mysql -h 127.0.0.1 -P 9306 -e "IMPORT TABLE $t FROM '"'"'$B/$t/$t'"'"'"
+         done' || error "the import of the search index failed: reindex the tenant"
+   fi
+
+   log "Starting piler"
+   docker compose start piler >/dev/null 2>&1 || error "couldn't start piler"
+   PILER_STOPPED=""
+
+   messages="$(docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mariadb -uroot -N -e \
+      "SELECT COUNT(*) FROM \`${tenant}\`.metadata" 2>/dev/null || echo "?")"
+   log "Done: ${messages} emails of ${tenant}. What it got after the backup is not in it."
+}
+
 case "${1:-backup}" in
    backup) backup ;;
    install-cron) install_cron "${2:-}" ;;
@@ -632,6 +773,7 @@ case "${1:-backup}" in
    install-timer) install_cron "${2:-}" ;;
    snapshots) snapshots ;;
    restore) restore "${2:-}" ;;
+   restore-tenant) shift; restore_tenant "$@" ;;
    extract) extract "${2:-}" "${3:-}" ;;
    -h|--help|*) usage ;;
 esac
