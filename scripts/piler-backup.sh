@@ -2,8 +2,8 @@
 #
 # Backs up a piler installation of the Docker compose examples (v2) into
 # a restic repository: a single node, or a node of a multi-node deployment.
-# Run it in the directory of the installation (with docker-compose.yaml and
-# .env):
+# Run it in the directory of the installation (with docker-compose.yaml, or
+# what COMPOSE_FILE names, and .env):
 #
 #   piler-backup.sh                       back up now (cron runs this)
 #   piler-backup.sh install-cron [HH:MM]  back up every day (/etc/cron.d as
@@ -40,6 +40,8 @@
 #                       and checks it on Sundays (prune and check need it
 #                       alone, one node is enough)
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY   for an S3 repository
+#   COMPOSE_FILE        the compose files, if not docker-compose.yaml
+#                       (separated by ':'), as for docker compose itself
 #
 # Emails in S3 storage (multi-node workers) are not in it: back up the
 # buckets with your object storage's tools (versioning, replication).
@@ -73,11 +75,22 @@ usage() {
 }
 
 load_settings() {
-   [[ -f .env && -f docker-compose.yaml ]] || error "no .env and docker-compose.yaml here: run it in the directory of the installation"
+   local compose_file="${COMPOSE_FILE:-}"
+   local file
+
+   [[ -f .env ]] || error "no .env here: run it in the directory of the installation"
    docker compose version >/dev/null 2>&1 || error "the docker compose plugin is not installed"
 
    # shellcheck disable=SC1091 # the settings of the installation
    . ./.env
+
+   # The environment first, then .env, as docker compose does. Exported, so
+   # every docker compose here uses the files that are backed up
+   export COMPOSE_FILE="${compose_file:-${COMPOSE_FILE:-docker-compose.yaml}}"
+   IFS="${COMPOSE_PATH_SEPARATOR:-:}" read -r -a COMPOSE_FILES <<< "$COMPOSE_FILE"
+   for file in "${COMPOSE_FILES[@]}"; do
+      [[ -f "$file" ]] || error "no ${file} here: run it in the directory of the installation, or set COMPOSE_FILE"
+   done
 
    [[ -n "${BACKUP_REPOSITORY:-}" ]] || error "BACKUP_REPOSITORY is not set in .env, see the top of $0"
    [[ -n "${BACKUP_PASSWORD:-}" ]] || error "BACKUP_PASSWORD is not set in .env, e.g. echo \"BACKUP_PASSWORD=\$(openssl rand -hex 32)\" >> .env, and keep a copy off this host"
@@ -270,7 +283,7 @@ collect_installation() {
    done | COPYFILE_DISABLE=1 tar -C "$project_dir" -chf - -T - | tar -xf - -C "$WORK/installation" || return 1
 
    # -h: the file behind a symbolic link
-   COPYFILE_DISABLE=1 tar -C "$PWD" -chf - .env docker-compose.yaml | tar -xf - -C "$WORK/installation" || return 1
+   COPYFILE_DISABLE=1 tar -C "$PWD" -chf - .env "${COMPOSE_FILES[@]}" | tar -xf - -C "$WORK/installation" || return 1
 
    # A backup without the key would look fine, but can't be read
    [[ -f "$WORK/installation/piler.key" ]]
@@ -538,7 +551,7 @@ extract() {
 external_volumes() {
    awk '/^volumes:/ { v = 1; next } /^[^ #]/ { v = 0 }
         v && /^  [a-z0-9_-]+:/ { name = $1; sub(":", "", name) }
-        v && /external: true/ { print name }' docker-compose.yaml
+        v && /external: true/ { print name }' "${COMPOSE_FILES[@]}"
 }
 
 restore() {
