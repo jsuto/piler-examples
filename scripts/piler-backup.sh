@@ -618,8 +618,11 @@ restore() {
    log "Starting piler"
    docker compose up -d --wait >/dev/null 2>&1 || error "not every service got healthy, see docker compose ps"
 
-   messages="$(docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mariadb -uroot -N piler -e 'SELECT COUNT(*) FROM metadata' 2>/dev/null || echo "?")"
-   log "Done: ${messages} emails in the piler database. The emails archived after the backup are not in it."
+   # Multi-tenant: the emails are in the databases of the tenants
+   messages="$(docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mariadb -uroot -N -e \
+      "SELECT CONCAT('SELECT 0', GROUP_CONCAT(' + (SELECT COUNT(*) FROM \`', table_schema, '\`.metadata)' SEPARATOR '')) FROM information_schema.tables WHERE table_name = 'metadata'" 2>/dev/null \
+      | docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mariadb -uroot -N 2>/dev/null || echo "?")"
+   log "Done: ${messages} emails in the databases. The emails archived after the backup are not in it."
 }
 
 case "${1:-backup}" in
