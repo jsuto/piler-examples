@@ -157,6 +157,11 @@ services:
   traefik:
     <<: *defaults
     image: traefik:v3.7.11
+    # A fixed address: piler-ui trusts the X-Forwarded-For of this one only
+    # (TRUSTED_PROXIES in piler.env)
+    networks:
+      piler:
+        ipv4_address: 172.31.251.10
     command:
       # For the healthcheck, on port 8080 inside the container only
       - --ping=true
@@ -191,3 +196,8 @@ volumes:
 networks:
   piler:
     name: piler-master
+    # A fixed subnet for the fixed address of traefik. If it overlaps a
+    # network of the host, change it, traefik's address and TRUSTED_PROXIES
+    ipam:
+      config:
+        - subnet: 172.31.251.0/24

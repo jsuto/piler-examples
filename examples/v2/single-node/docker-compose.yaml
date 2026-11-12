@@ -229,7 +229,11 @@ services:
     image: traefik:v3.7.11
     container_name: traefik
     restart: unless-stopped
-    <<: *networks
+    # A fixed address: piler-ui trusts the X-Forwarded-For of this one only
+    # (TRUSTED_PROXIES in env)
+    networks:
+      piler:
+        ipv4_address: 172.31.250.10
     environment:
       # traefik-dynamic.yaml makes a router (and a certificate) of each
       - PILER_HOSTNAME=${PILER_HOSTNAME}
@@ -279,3 +283,8 @@ volumes:
 networks:
   piler:
     name: piler
+    # A fixed subnet for the fixed address of traefik. If it overlaps a
+    # network of the host, change it, traefik's address and TRUSTED_PROXIES
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24

@@ -110,6 +110,11 @@ in `.env`, then `docker compose pull` and `docker compose up -d --wait`.
 The piler container adds the `participants` column to the index at its
 start (2.2.5).
 
+An installation set up before traefik got its fixed address (172.31.250.10)
+has `TRUSTED_PROXIES=172.16.0.0/12` in `env`: set it to `172.31.250.10`.
+The next `docker compose up -d` recreates the `piler` network with its
+fixed subnet.
+
 ## Backup
 
 `../../../scripts/piler-backup.sh` backs up the installation into a

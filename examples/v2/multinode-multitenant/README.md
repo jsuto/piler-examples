@@ -289,6 +289,11 @@ A worker with the RustFS service: put `COMPOSE_PROFILES=s3` into its
 By hand: set `PILER_VERSION` in `.env`, then `docker compose pull` and
 `docker compose up -d --wait`.
 
+A master set up before traefik got its fixed address (172.31.251.10) has
+`TRUSTED_PROXIES=172.16.0.0/12` in `piler.env`: set it to `172.31.251.10`.
+The next `docker compose up -d` recreates the `piler-master` network with
+its fixed subnet.
+
 A worker set up before the `piler_error` volume keeps its error directory
 in the containers, and loses it when they are recreated. Before the
 upgrade, check it's empty (`docker compose exec piler ls /var/piler/error`,
